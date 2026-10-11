@@ -2,7 +2,7 @@
 
 A lightweight tool for small businesses and freelancers to keep client contacts, track the projects they run for each client, and plan the work on a calendar.
 
-It runs entirely in the browser: no account, no server, no build step.
+It runs in the browser with no build step. On its own it saves data in your browser; connect it to [Supabase](https://supabase.com) and your team signs in with Google and shares one workspace that stays in sync.
 
 ## Features
 
@@ -23,8 +23,14 @@ It runs entirely in the browser: no account, no server, no build step.
 - **Calendar entries:** a title, date, notes, an optional project, and any number of website or Drive links.
 - **Timeline report:** a company-review overview of every project across 1–12 months, grouped by client or status. Download it as a PDF or PNG.
 
+**Accounts and team sync** (once set up, see below)
+- Sign in with Google. Your team shares one workspace of clients, projects and calendar.
+- Changes appear on everyone's screen as they happen.
+- The workspace owner invites teammates by email from the **Team** panel; they join the first time they sign in.
+- If you used the app before signing in, it offers to copy that browser's data into the workspace.
+
 **Your data**
-- Saved automatically in your browser on the device you use.
+- Without accounts, saved automatically in your browser on the device you use.
 - **Download backup** saves everything to a JSON file. **Restore from backup** loads it again, on the same device or a new one.
 - **Load example data** fills an empty workspace with sample clients and projects, all marked "Example", so you can try things out.
 
@@ -48,24 +54,36 @@ npm start
 
 Then open <http://localhost:8080>. Any static file server works too, for example `python3 -m http.server 8080`.
 
+## Accounts and sync
+
+Follow [docs/supabase-setup.md](docs/supabase-setup.md) to create the Supabase project, set up Google sign-in, and add your project's URL and public key to `js/config.js`. Until then, the app runs in browser-only mode.
+
 ## Where data is stored
 
-Data lives in the browser's local storage under the key `cpm.data.v1`. It is not sent anywhere. That means:
+**With accounts:** in your Supabase project's database. Access rules in `supabase/migrations/` let only a workspace's members see or change its data.
+
+**Without accounts:** in the browser's local storage under the key `cpm.data.v1`. It is not sent anywhere. That means:
 
 - Clearing your browser's site data deletes it, so download a backup regularly.
 - A different browser or device starts empty until you restore a backup there.
 
-The same app also runs as a page on claude.ai, where it uses claude.ai's storage and syncs across devices automatically. `js/app.js` picks whichever storage is available.
+The same app also runs as a page on claude.ai, where it uses claude.ai's storage. `js/app.js` picks whichever storage is available: claude.ai, then Supabase if configured, then this browser.
 
 ## Project structure
 
 ```
 index.html            Page markup
 css/styles.css        Styles, with light and dark themes
+js/config.js          Supabase project URL and public key (empty = browser-only mode)
+js/cloud.js           Google sign-in, workspaces, team and synced storage via Supabase
 js/storage.js         Browser storage (local storage with live updates across tabs)
-js/app.js             The app: clients, projects, calendar, report, backup
+js/app.js             The app: clients, projects, calendar, report, backup, team
+supabase/migrations/  Database tables and access rules
+docs/                 Setup guides
 scripts/serve.mjs     Small static server for `npm start` and the tests
-tests/smoke.mjs       End-to-end test that drives the app in headless Chromium
+tests/smoke.mjs       End-to-end test of browser-only mode in headless Chromium
+tests/cloud.mjs       End-to-end test of sign-in, workspaces and live sync (with a fake Supabase)
+tests/db/             Access rule tests against a real Postgres database
 ```
 
 ## Testing
@@ -73,16 +91,20 @@ tests/smoke.mjs       End-to-end test that drives the app in headless Chromium
 ```sh
 npm install
 npx playwright install chromium   # first time only
-npm test
+npm test          # browser tests
+npm run test:db   # database access rules; needs Postgres 15+ installed
 ```
 
-The smoke test adds clients, projects and calendar entries, checks that data survives a reload, downloads the timeline report and a backup, restores the backup into a fresh browser, and checks the layout at phone width. GitHub Actions runs it on every push and pull request.
+- **Browser-only test:** adds clients, projects and calendar entries, checks that data survives a reload, downloads the timeline report and a backup, restores the backup into a fresh browser, and checks the layout at phone width.
+- **Accounts test:** signs in, creates a workspace, copies browser data into it, checks that changes appear live on a second page, manages invites, and signs out. A stand-in for Supabase (`tests/fake-supabase.js`) is used so no real project is needed.
+- **Database test:** applies the migration to a temporary Postgres database and checks the access rules as different people: owners, members, outsiders, invitees, and signed-out visitors.
+
+GitHub Actions runs all three on every push and pull request.
 
 ## Roadmap
 
 Planned for the full version:
 
-- **Accounts and sync:** a real database and sign-in, so data follows you across devices and a team can share one workspace.
 - **Google Drive integration:** pick files from Drive and show image previews instead of plain links.
 - **React + TypeScript rebuild:** split the app into components with unit tests as it grows.
 - **More project detail:** budgets, invoices and time tracking, a notes and activity log per client, and deadline reminders.

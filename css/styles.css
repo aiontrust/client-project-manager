@@ -236,6 +236,20 @@ tr.group td { background: var(--bg); font-family: var(--display); font-weight: 6
 .foot { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 14px; }
 .foot p { margin: 0; color: var(--muted); font-size: .85rem; max-width: 65ch; }
 
+/* Accounts */
+.account { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 5px 12px 5px 8px; cursor: pointer; font-weight: 600; max-width: 100%; min-width: 0; margin-left: auto; }
+.account:hover { border-color: var(--muted); }
+.account #account-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 22ch; }
+.account-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--done); flex: none; }
+.gate { display: grid; place-items: center; padding-block: 24px; }
+.gate-card { width: min(480px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 24px; display: grid; gap: 14px; }
+.gate-card h2 { font-family: var(--display); margin: 0; font-size: 1.4rem; text-wrap: balance; }
+.gate-card p { margin: 0; }
+.gate-card .field input { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.gate-card .field label { font-size: .82rem; font-weight: 600; color: var(--muted); }
+.gate-card .field .err { color: var(--danger); font-size: .8rem; }
+.notice.import { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; background: var(--accent-soft); }
+
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(20px + env(safe-area-inset-bottom, 0px)); background: var(--fg); color: var(--bg); padding: 9px 16px; border-radius: 8px; font-size: .9rem; z-index: 30; box-shadow: var(--shadow); max-width: calc(100% - 32px); }
 
 @media (max-width: 820px) {

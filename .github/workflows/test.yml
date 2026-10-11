@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  smoke:
+  app:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,3 +17,10 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm test
+
+  database:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Postgres 16 comes preinstalled on GitHub's Ubuntu runners.
+      - run: npm run test:db
