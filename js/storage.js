@@ -71,5 +71,15 @@ window.CPMLocalStore = (() => {
     };
   }
 
-  return { open };
+  // The data saved in this browser, or null when there is none or storage is blocked.
+  function peek() {
+    try {
+      const d = JSON.parse(window.localStorage.getItem(KEY) || 'null');
+      return d && typeof d === 'object' ? d : null;
+    } catch {
+      return null;
+    }
+  }
+
+  return { open, peek };
 })();

@@ -1,12 +1,13 @@
 {
   "name": "client-project-manager",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Keep client contacts, track each client's projects by status and due date, and plan them on a calendar.",
   "type": "module",
   "scripts": {
     "start": "node scripts/serve.mjs",
-    "test": "node tests/smoke.mjs"
+    "test": "node tests/smoke.mjs && node tests/cloud.mjs",
+    "test:db": "bash tests/db/run.sh"
   },
   "devDependencies": {
     "playwright": "1.56.1"

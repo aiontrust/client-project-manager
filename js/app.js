@@ -143,13 +143,16 @@
   }
   function listen(col) {
     const map = mapOf(col);
-    db.collection(col).onSnapshot(snap => {
+    const source = db;
+    source.collection(col).onSnapshot(snap => {
+      if (db !== source) return;
       map.clear();
       snap.docs.forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
       state.loaded[col] = true;
       if (state.selectedId && !state.contacts.has(state.selectedId) && state.loaded.contacts) state.selectedId = null;
       render();
     }, () => {
+      if (db !== source) return;
       $('offline').hidden = false;
       $('offline').textContent = 'Live updates stopped. Reload the page to reconnect.';
     });
@@ -182,8 +185,9 @@
 
     document.querySelectorAll('#add-contact, #add-project-board, #add-entry').forEach(b => b.disabled = readOnly);
 
+    const gated = !$('gate').hidden;
     for (const v of ['clients', 'projects', 'calendar']) {
-      $('view-' + v).hidden = state.view !== v;
+      $('view-' + v).hidden = gated || state.view !== v;
       $('tab-' + v).setAttribute('aria-selected', state.view === v);
     }
 
@@ -793,6 +797,8 @@
   });
 
   document.addEventListener('click', async e => {
+    const team = e.target.closest('[data-remove-member],[data-cancel-invite]');
+    if (team) { teamAction(team); return; }
     const t = e.target.closest('[data-select],[data-action],[data-edit-project],[data-edit-entry],[data-goto],[data-copy],[data-calmode],[data-calnav],[data-day],[data-sort]');
     if (!t) return;
     const ds = t.dataset;
@@ -827,6 +833,17 @@
       case 'new-project-for': if (c) projectForm(null, c.id); break;
       case 'new-entry': entryForm(null, ds.date); break;
       case 'load-examples': loadExamples(); break;
+      case 'sign-in':
+        t.disabled = true;
+        state.cloud.api.signIn().catch(ex => { t.disabled = false; toast(`Sign-in didn’t start: ${ex.message}`); });
+        break;
+      case 'sign-out': signOut(); break;
+      case 'reload': location.reload(); break;
+      case 'new-workspace': closeSheet(); $('account').hidden = true; gate('create'); break;
+      case 'leave-workspace': leaveWorkspace(t); break;
+      case 'back-to-workspace': openWorkspace(state.cloud.workspace); break;
+      case 'import-local': importLocal(); break;
+      case 'import-skip': store.set('cpm.imported.' + state.cloud.workspace.id, '1'); $('import-note').hidden = true; break;
       case 'export-png': exportReport('png'); break;
       case 'export-pdf': exportReport('pdf'); break;
       case 'add-link': { const rows = $('link-rows'); rows.insertAdjacentHTML('beforeend', linkRow()); rows.lastElementChild.querySelector('input').focus(); break; }
@@ -959,6 +976,228 @@
     if (f) restoreBackup(f);
   });
 
+  // ---------- accounts and sync ----------
+  // Used when js/config.js points at a Supabase project.
+  function gate(mode, message) {
+    const el = $('gate');
+    const showApp = !mode;
+    el.hidden = showApp;
+    for (const id of ['summary', 'view-clients', 'view-projects', 'view-calendar', 'foot', 'main-tabs']) $(id).hidden = !showApp;
+    if (showApp) { el.innerHTML = ''; render(); return; }
+    const user = state.cloud && state.cloud.user;
+    const who = user ? `<p class="hint">Signed in as <strong>${esc(user.email)}</strong>. <button class="copy" data-action="sign-out">Sign out</button></p>` : '';
+    if (mode === 'loading') {
+      el.innerHTML = `<div class="gate-card"><p class="hint">${esc(message || 'Connecting…')}</p></div>`;
+    } else if (mode === 'signin') {
+      el.innerHTML = `<div class="gate-card">
+        <h2>Sign in to your workspace</h2>
+        <p>Your team's clients, projects and calendar, kept in sync on every device.</p>
+        <button class="btn primary" data-action="sign-in">Sign in with Google</button>
+        <p class="hint">Joining a teammate's workspace? Sign in with the Google account for the email address they invited.</p>
+      </div>`;
+    } else if (mode === 'create') {
+      el.innerHTML = `<div class="gate-card">
+        <h2>Create your workspace</h2>
+        <p>A workspace holds your company's clients, projects and calendar. You can invite your team once it's set up.</p>
+        <form id="ws-form" class="field" novalidate>
+          <label for="ws-name">Workspace name</label>
+          <input id="ws-name" name="name" placeholder="e.g. your company name" autocomplete="organization" maxlength="100" required>
+          <span class="err" id="ws-err" hidden></span>
+          <button class="btn primary" type="submit" style="justify-self:start;margin-top:8px">Create workspace</button>
+        </form>
+        <p class="hint">Expecting an invite? Ask your teammate to invite <strong>${esc(user ? user.email : 'your email address')}</strong>, then reload this page.</p>
+        ${state.cloud && state.cloud.workspace ? `<button class="btn" data-action="back-to-workspace" style="justify-self:start">Back to ${esc(state.cloud.workspace.name)}</button>` : ''}
+        ${who}
+      </div>`;
+      $('ws-form').addEventListener('submit', async e => {
+        e.preventDefault();
+        const name = $('ws-name').value.trim();
+        const err = $('ws-err');
+        if (!name) { err.textContent = 'Enter a name for the workspace.'; err.hidden = false; return; }
+        e.target.querySelector('button').disabled = true;
+        try {
+          const id = await state.cloud.api.createWorkspace(name);
+          const ws = { id, name, role: 'owner' };
+          state.cloud.workspaces.push(ws);
+          openWorkspace(ws);
+          toast(`Created ${name}`);
+        } catch (ex) {
+          err.textContent = `The workspace couldn’t be created: ${ex.message}`; err.hidden = false;
+          e.target.querySelector('button').disabled = false;
+        }
+      });
+      setTimeout(() => $('ws-name')?.focus(), 0);
+    } else {
+      el.innerHTML = `<div class="gate-card">
+        <h2>Can’t reach your workspace</h2>
+        <p>${esc(message || 'Something went wrong.')}</p>
+        <button class="btn primary" data-action="reload">Reload</button>
+        ${who}
+      </div>`;
+    }
+  }
+
+  async function startCloud(api) {
+    state.cloud = { api, user: null, workspace: null, workspaces: [] };
+    gate('loading');
+    api.onSignedOut(() => location.reload());
+    try {
+      state.cloud.user = await api.user();
+      if (!state.cloud.user) return gate('signin');
+      state.cloud.workspaces = await api.workspaces();
+    } catch (e) {
+      return gate('error', e.message);
+    }
+    if (!state.cloud.workspaces.length) return gate('create');
+    const saved = store.get('cpm.workspace');
+    openWorkspace(state.cloud.workspaces.find(w => w.id === saved) || state.cloud.workspaces[0]);
+  }
+
+  function openWorkspace(ws) {
+    if (db && db.close) db.close();
+    state.cloud.workspace = ws;
+    store.set('cpm.workspace', ws.id);
+    for (const col of COLLECTIONS) { state[col].clear(); state.loaded[col] = false; }
+    state.selectedId = null;
+    readOnly = false;
+    db = state.cloud.api.store(ws.id);
+    $('account').hidden = false;
+    $('account-name').textContent = ws.name;
+    $('storage-note').textContent = `Saved to ${ws.name} and shared with everyone in the workspace.`;
+    gate(null);
+    COLLECTIONS.forEach(listen);
+    offerLocalImport(ws);
+  }
+
+  // Data saved in this browser before signing in can be copied into the workspace once.
+  function offerLocalImport(ws) {
+    const local = window.CPMLocalStore && window.CPMLocalStore.peek();
+    const flag = 'cpm.imported.' + ws.id;
+    const note = $('import-note');
+    const n = local ? COLLECTIONS.reduce((sum, c) => sum + Object.keys(local[c] || {}).length, 0) : 0;
+    if (!n || store.get(flag)) { note.hidden = true; return; }
+    note.hidden = false;
+    note.innerHTML = `<span>This browser has ${n} record${n === 1 ? '' : 's'} saved from before you signed in. Copy ${n === 1 ? 'it' : 'them'} into ${esc(ws.name)}?</span>
+      <span class="actions"><button class="btn sm" data-action="import-skip">Not now</button><button class="btn sm primary" data-action="import-local">Copy into workspace</button></span>`;
+  }
+  async function importLocal() {
+    const ws = state.cloud.workspace;
+    const local = window.CPMLocalStore.peek() || {};
+    $('import-note').hidden = true;
+    let n = 0;
+    for (const col of COLLECTIONS) {
+      for (const [id, data] of Object.entries(local[col] || {})) {
+        if (!(await save(col, id, data))) { $('import-note').hidden = false; return; }
+        n++;
+      }
+    }
+    store.set('cpm.imported.' + ws.id, '1');
+    toast(`Copied ${n} record${n === 1 ? '' : 's'} into ${ws.name}`);
+  }
+
+  async function teamSheet() {
+    const { api, user, workspace: ws, workspaces } = state.cloud;
+    const owner = ws.role === 'owner';
+    openSheet(`<h2 id="sheet-title">${esc(ws.name)}</h2>
+      <p class="hint" style="margin:0">Signed in as <strong>${esc(user.email)}</strong>${owner ? ' · Owner' : ''}</p>
+      ${workspaces.length > 1 ? `<div class="field"><label for="ws-switch">Switch workspace</label><select id="ws-switch">
+        ${workspaces.map(w => `<option value="${esc(w.id)}" ${w.id === ws.id ? 'selected' : ''}>${esc(w.name)}</option>`).join('')}</select></div>` : ''}
+      <div style="display:grid;gap:10px">
+        <h3>Team</h3>
+        <ul class="day-list" id="team-members"><li class="hint">Loading the team…</li></ul>
+      </div>
+      ${owner ? `<form id="invite-form" class="field" novalidate>
+        <label for="invite-email">Invite a teammate</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input id="invite-email" type="email" placeholder="name@company.com" autocomplete="off" style="flex:1 1 220px">
+          <button class="btn primary" type="submit">Send invite</button>
+        </div>
+        <span class="hint">They join when they sign in with Google using this address. No email is sent, so let them know.</span>
+        <span class="err" id="invite-err" hidden></span>
+      </form>
+      <div style="display:grid;gap:10px" id="invites-wrap" hidden><h3>Waiting to join</h3><ul class="day-list" id="team-invites"></ul></div>` : ''}
+      <div class="sheet-actions">
+        <button type="button" class="btn ghost" data-action="new-workspace" style="margin-right:auto">New workspace</button>
+        ${owner ? '' : '<button type="button" class="btn danger" data-action="leave-workspace">Leave workspace</button>'}
+        <button type="button" class="btn" data-action="sign-out">Sign out</button>
+        <button type="button" class="btn primary" data-action="close">Done</button>
+      </div>`, null);
+    $('ws-switch')?.addEventListener('change', e => {
+      const next = workspaces.find(w => w.id === e.target.value);
+      if (next) { closeSheet(); openWorkspace(next); toast(`Switched to ${next.name}`); }
+    });
+    $('invite-form')?.addEventListener('submit', async e => {
+      e.preventDefault();
+      const email = $('invite-email').value.trim().toLowerCase();
+      const err = $('invite-err');
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { err.textContent = 'Enter their full email address, for example name@company.com.'; err.hidden = false; return; }
+      try { await api.invite(ws.id, email); }
+      catch (ex) { err.textContent = `The invite couldn’t be saved: ${ex.message}`; err.hidden = false; return; }
+      err.hidden = true; $('invite-email').value = '';
+      toast(`Invited ${email}`);
+      loadTeam();
+    });
+    loadTeam();
+  }
+
+  async function loadTeam() {
+    const { api, user, workspace: ws } = state.cloud;
+    const owner = ws.role === 'owner';
+    const list = $('team-members');
+    if (!list) return;
+    try {
+      const [members, invites] = await Promise.all([api.members(ws.id), owner ? api.invites(ws.id) : Promise.resolve([])]);
+      members.sort((a, b) => (a.role === 'owner' ? -1 : 0) - (b.role === 'owner' ? -1 : 0) || a.email.localeCompare(b.email));
+      list.innerHTML = members.map(m => `<li class="day-item"><div class="top">
+        <span><strong>${esc(m.name || m.email)}</strong>${m.user_id === user.id ? ' <span class="mini">(you)</span>' : ''}${m.name ? `<br><span class="tag">${esc(m.email)}</span>` : ''}</span>
+        <span class="actions" style="align-items:center"><span class="pill ${m.role === 'owner' ? 'in-progress' : 'pending'}">${m.role === 'owner' ? 'Owner' : 'Member'}</span>
+        ${owner && m.role !== 'owner' ? `<button class="btn ghost sm" data-remove-member="${esc(m.user_id)}">Remove</button>` : ''}</span>
+      </div></li>`).join('');
+      if (owner) {
+        $('invites-wrap').hidden = !invites.length;
+        $('team-invites').innerHTML = invites.map(i => `<li class="day-item"><div class="top">
+          <span>${esc(i.email)}</span><button class="btn ghost sm" data-cancel-invite="${esc(i.email)}">Cancel invite</button></div></li>`).join('');
+      }
+    } catch (e) {
+      list.innerHTML = `<li class="err">The team couldn’t be loaded: ${esc(e.message)}</li>`;
+    }
+  }
+
+  async function teamAction(t) {
+    const { api, workspace: ws } = state.cloud;
+    const ds = t.dataset;
+    try {
+      if (ds.removeMember) {
+        if (t.dataset.confirm !== '1') { t.dataset.confirm = '1'; t.textContent = 'Confirm remove'; t.classList.add('danger'); return; }
+        await api.removeMember(ws.id, ds.removeMember);
+        toast('Removed from the workspace');
+      } else if (ds.cancelInvite) {
+        await api.cancelInvite(ws.id, ds.cancelInvite);
+        toast('Invite cancelled');
+      }
+    } catch (e) {
+      toast(`That didn’t work: ${e.message}`);
+    }
+    loadTeam();
+  }
+
+  async function leaveWorkspace(t) {
+    const { api, user, workspace: ws } = state.cloud;
+    if (t.dataset.confirm !== '1') { t.dataset.confirm = '1'; t.textContent = `Confirm leaving ${ws.name}`; return; }
+    try { await api.removeMember(ws.id, user.id); }
+    catch (e) { toast(`That didn’t work: ${e.message}`); return; }
+    store.set('cpm.workspace', '');
+    location.reload();
+  }
+
+  async function signOut() {
+    try { await state.cloud.api.signOut(); } catch {}
+    store.set('cpm.workspace', '');
+    location.reload();
+  }
+
+  $('account').addEventListener('click', teamSheet);
+
   // ---------- boot ----------
   const savedView = store.get('cpm.view');
   if (['clients', 'projects', 'calendar'].includes(savedView)) state.view = savedView;
@@ -970,6 +1209,10 @@
     if (db) {
       $('storage-note').textContent = 'Your data is saved with this page on claude.ai, so it follows you across devices.';
     } else {
+      let cloud = null;
+      try { cloud = window.CPMCloud ? await window.CPMCloud.connect(window.CPM_CONFIG) : null; }
+      catch (e) { gate('error', e.message); return; }
+      if (cloud) { startCloud(cloud); return; }
       db = window.CPMLocalStore ? window.CPMLocalStore.open() : null;
     }
     if (!db) { $('offline').hidden = false; $('storage-note').textContent = 'Use Download backup before closing the page to keep your changes.'; state.loaded = { contacts: true, projects: true, entries: true }; render(); return; }
