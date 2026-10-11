@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Client &amp; Project Manager</title>
+<meta name="description" content="Keep client contacts, track each client's projects by status and due date, and plan them on a calendar.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div class="brand">
+      <h1>Client &amp; Project Manager</h1>
+    </div>
+    <div class="tabs" role="tablist" aria-label="Views">
+      <button class="tab" role="tab" id="tab-clients" aria-selected="true">Clients<span class="count" id="count-clients">0</span></button>
+      <button class="tab" role="tab" id="tab-projects" aria-selected="false">Projects<span class="count" id="count-projects">0</span></button>
+      <button class="tab" role="tab" id="tab-calendar" aria-selected="false">Calendar</button>
+    </div>
+  </header>
+
+  <div class="summary" id="summary"></div>
+  <div class="notice" id="offline" hidden>This browser is blocking storage, so changes last only until you close the page.</div>
+
+  <section id="view-clients">
+    <div class="split">
+      <aside class="pane">
+        <div class="list-head">
+          <div class="row">
+            <span class="label">Clients</span>
+            <button class="btn primary sm" id="add-contact">+ New client</button>
+          </div>
+          <input class="search" id="search" type="search" placeholder="Search name, email or company" aria-label="Search clients">
+        </div>
+        <ul class="contact-list" id="contact-list"></ul>
+      </aside>
+      <main class="pane" id="detail"></main>
+    </div>
+  </section>
+
+  <section id="view-projects" hidden>
+    <div class="stack">
+      <div class="board-tools">
+        <div class="filters">
+          <label class="label" for="filter-client">Client</label>
+          <select id="filter-client"></select>
+        </div>
+        <button class="btn primary" id="add-project-board">+ New project</button>
+      </div>
+      <div class="board" id="board"></div>
+    </div>
+  </section>
+
+  <section id="view-calendar" hidden>
+    <div class="stack">
+      <div class="cal-tools">
+        <div class="seg" role="group" aria-label="Calendar layout">
+          <button class="tab" data-calmode="month" aria-pressed="true">Month</button>
+          <button class="tab" data-calmode="list" aria-pressed="false">List</button>
+        </div>
+        <div class="cal-nav" id="cal-nav">
+          <button class="btn icon" data-calnav="-1" aria-label="Previous">‹</button>
+          <button class="btn sm" data-calnav="0">Today</button>
+          <button class="btn icon" data-calnav="1" aria-label="Next">›</button>
+          <h2 id="cal-title"></h2>
+        </div>
+        <div class="actions">
+          <button class="btn" id="open-report">Timeline report</button>
+          <button class="btn primary" id="add-entry">+ New entry</button>
+        </div>
+      </div>
+      <div class="legend" id="cal-legend">
+        <span><i style="background:var(--progress)"></i>Project starts</span>
+        <span><i style="background:var(--pending)"></i>Project due</span>
+        <span><i style="background:var(--danger)"></i>Overdue</span>
+        <span><i style="background:var(--entry)"></i>Entry with notes or links</span>
+      </div>
+      <div id="cal-body"></div>
+    </div>
+  </section>
+  <footer class="foot" id="foot">
+    <p id="storage-note">Your data is saved in this browser on this device. Download a backup now and then, and to move your data to another device.</p>
+    <div class="actions">
+      <button class="btn sm" id="backup-download">Download backup</button>
+      <button class="btn sm" id="backup-restore">Restore from backup</button>
+      <input type="file" id="backup-file" accept="application/json,.json" hidden>
+    </div>
+  </footer>
+</div>
+
+<div class="scrim" id="scrim" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" id="sheet"></div>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="js/storage.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

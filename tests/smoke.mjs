@@ -1,0 +1,151 @@
+// End-to-end smoke test: drives the app in headless Chromium against the local server.
+// Run with `npm test`. Set CHROMIUM_PATH to use an already-installed Chromium.
+import { chromium } from 'playwright';
+import { readFile } from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import { serve } from '../scripts/serve.mjs';
+
+const server = await serve(0);
+const base = `http://localhost:${server.address().port}/`;
+const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
+const errors = [];
+let failed = false;
+
+async function step(name, fn) {
+  try {
+    await fn();
+    console.log(`  ok   ${name}`);
+  } catch (e) {
+    failed = true;
+    console.log(`  FAIL ${name}\n       ${e.message.split('\n')[0]}`);
+  }
+}
+
+async function openApp(context, width = 1280) {
+  const page = await context.newPage();
+  await page.setViewportSize({ width, height: 900 });
+  page.on('pageerror', e => errors.push(e.message));
+  // Fonts and the PDF library come from CDNs; keep the test offline and fast.
+  await page.route(/fonts\.(googleapis|gstatic)\.com|cdnjs\.cloudflare\.com/, r => r.abort());
+  await page.goto(base);
+  return page;
+}
+const count = (page, id) => page.textContent(`#count-${id}`).then(Number);
+
+console.log('Client & Project Manager smoke test');
+const context = await browser.newContext({ acceptDownloads: true });
+const page = await openApp(context);
+
+await step('starts empty and offers example data', async () => {
+  assert.equal(await count(page, 'clients'), 0);
+  await page.click('[data-action=load-examples]');
+  await page.waitForFunction(() => document.querySelector('#count-projects').textContent === '5');
+  assert.equal(await count(page, 'clients'), 3);
+});
+
+await step('adds a client', async () => {
+  await page.click('#add-contact');
+  await page.fill('#f-name', 'Test Client');
+  await page.fill('#f-email', 'not-an-email');
+  await page.click('#contact-form [type=submit]');
+  assert.match(await page.textContent('#f-err'), /email address/);
+  await page.fill('#f-email', 'test@example.com');
+  await page.click('#contact-form [type=submit]');
+  await page.waitForFunction(() => document.querySelector('#count-clients').textContent === '4');
+});
+
+await step('adds a project with a Drive link and rejects a bad date range', async () => {
+  await page.click('[data-action=new-project-for]');
+  await page.fill('#p-name', 'Test Project');
+  await page.fill('#p-start', '2026-10-10');
+  await page.fill('#p-end', '2026-10-01');
+  await page.click('[data-action=add-link]');
+  await page.fill('.link-row [name=link-url]', 'drive.google.com/file/d/abc');
+  await page.click('#project-form [type=submit]');
+  assert.match(await page.textContent('#p-err'), /due date is before/);
+  await page.fill('#p-end', '2026-10-20');
+  await page.click('#project-form [type=submit]');
+  await page.waitForFunction(() => document.querySelector('#count-projects').textContent === '6');
+  assert.ok(await page.isVisible('text=1 link'));
+});
+
+await step('changes a project status from the client page', async () => {
+  await page.selectOption('#detail select.status', 'completed');
+  await page.waitForSelector('#detail .status.completed');
+});
+
+await step('keeps data after a reload', async () => {
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#count-clients').textContent === '4');
+  assert.equal(await count(page, 'projects'), 6);
+});
+
+await step('shows the calendar month and list views', async () => {
+  await page.click('#tab-calendar');
+  await page.click('[data-calmode=month]');
+  assert.ok((await page.locator('.day').count()) >= 28);
+  await page.click('[data-calmode=list]');
+  const headers = await page.locator('.listview th').allTextContents();
+  assert.deepEqual(headers.map(h => h.replace(/[↑↓]/g, '').trim()), ['Start', 'Project', 'Due', 'Days left', 'Links', 'Client', 'Status']);
+});
+
+await step('adds a calendar entry from a day', async () => {
+  await page.click('[data-calmode=month]');
+  await page.click('.day.today');
+  await page.click('[data-action=new-entry]');
+  await page.fill('#e-title', 'Photo review');
+  await page.fill('.link-row [name=link-url]', 'https://drive.google.com/drive/folders/xyz');
+  await page.click('#entry-form [type=submit]');
+  await page.waitForSelector('.day.today .evt.entry');
+});
+
+await step('downloads the timeline report as PNG', async () => {
+  await page.click('#open-report');
+  await page.waitForSelector('#report-preview svg');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-action=export-png]')]);
+  assert.match(dl.suggestedFilename(), /^project-timeline-.*\.png$/);
+  const bytes = await readFile(await dl.path());
+  assert.equal(bytes.subarray(1, 4).toString(), 'PNG');
+  await page.click('[data-action=close]');
+});
+
+let backupPath;
+await step('downloads a backup', async () => {
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#backup-download')]);
+  backupPath = await dl.path();
+  const backup = JSON.parse(await readFile(backupPath, 'utf8'));
+  assert.equal(backup.contacts.length, 4);
+  assert.equal(backup.projects.length, 6);
+  assert.equal(backup.entries.length, 3);
+});
+
+await step('restores the backup into a fresh browser', async () => {
+  const fresh = await browser.newContext();
+  const p2 = await openApp(fresh);
+  assert.equal(await count(p2, 'clients'), 0);
+  await p2.setInputFiles('#backup-file', backupPath);
+  await p2.waitForFunction(() => document.querySelector('#count-clients').textContent === '4');
+  assert.equal(await count(p2, 'projects'), 6);
+  await fresh.close();
+});
+
+await step('fits a phone screen without sideways scrolling', async () => {
+  const phone = await openApp(context, 400);
+  for (const tab of ['clients', 'projects', 'calendar']) {
+    await phone.click(`#tab-${tab}`);
+    const w = await phone.evaluate(() => document.documentElement.scrollWidth);
+    assert.ok(w <= 400, `${tab} is ${w}px wide`);
+  }
+});
+
+await step('raises no page errors', async () => {
+  assert.deepEqual(errors, []);
+});
+
+await browser.close();
+server.close();
+if (failed) {
+  console.log('Some checks failed.');
+  process.exit(1);
+}
+console.log('All checks passed.');
