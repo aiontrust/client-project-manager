@@ -336,6 +336,9 @@
     $('cal-legend').hidden = cal.mode === 'list';
     if (cal.mode === 'month') { $('cal-title').textContent = monthLabel(cal.cursor); $('cal-body').innerHTML = monthHTML(); }
     else $('cal-body').innerHTML = listHTML();
+    // A refresh rebuilds the list; put a still-open floating dropdown back next to its button.
+    const floating = document.querySelector('.table-wrap .link-menu[open]');
+    if (floating) placeLinkMenu(floating);
   }
 
   function itemsByDay() {
@@ -858,9 +861,23 @@
   };
   document.addEventListener('scroll', followFloatingMenu, { capture: true, passive: true });
   window.addEventListener('resize', followFloatingMenu);
+  // Open and close link dropdowns here rather than leaving it to the browser, so a
+  // floating one is positioned in the same moment it opens (the browser's own
+  // "toggle" notification arrives a little later).
   document.addEventListener('click', e => {
-    const menu = document.querySelector('.link-menu[open]');
-    if (menu && !menu.contains(e.target)) menu.open = false;
+    const open = document.querySelector('.link-menu[open]');
+    const summary = e.target.closest('.link-menu > summary');
+    if (summary) {
+      e.preventDefault();
+      const menu = summary.parentElement;
+      const opening = !menu.open;
+      if (open && open !== menu) open.open = false;
+      menu.open = opening;
+      openLinkMenu = opening ? menu.dataset.menu : null;
+      if (opening) placeLinkMenu(menu);
+      return;
+    }
+    if (open && !open.contains(e.target)) open.open = false;
   });
 
   document.addEventListener('change', async e => {
