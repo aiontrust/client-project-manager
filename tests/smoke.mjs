@@ -140,6 +140,26 @@ await step('fits a phone screen without sideways scrolling', async () => {
   }
 });
 
+await step('shows one empty-state message on a phone', async () => {
+  const fresh = await browser.newContext();
+  const p = await openApp(fresh, 400);
+  await p.waitForSelector('#detail .empty');
+  const visible = await p.$$eval('.empty strong', els => els.filter(e => e.offsetParent).map(e => e.textContent));
+  assert.deepEqual(visible, ['Your client book is empty']);
+  assert.ok(await p.isVisible('[data-action=load-examples]'));
+  await p.click('[data-action=load-examples]');
+  await p.waitForFunction(() => document.querySelector('#count-clients').textContent === '3');
+  await p.reload();
+  await p.waitForFunction(() => document.querySelector('#count-clients').textContent === '3');
+  assert.equal(await p.isVisible('#detail'), false, 'Pick a client card is hidden');
+  await p.click('[data-select="ex-c2"]');
+  assert.ok(await p.isVisible('#detail h2'));
+  const wide = await openApp(fresh, 1280);
+  await wide.waitForFunction(() => document.querySelector('#count-clients').textContent === '3');
+  assert.ok(await wide.isVisible('text=Pick a client'), 'desktop keeps the Pick a client card');
+  await fresh.close();
+});
+
 await step('raises no page errors', async () => {
   assert.deepEqual(errors, []);
 });
