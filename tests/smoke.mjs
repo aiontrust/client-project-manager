@@ -68,7 +68,12 @@ await step('adds a project with a Drive link and rejects a bad date range', asyn
   await page.fill('#p-end', '2026-10-20');
   await page.click('#project-form [type=submit]');
   await page.waitForFunction(() => document.querySelector('#count-projects').textContent === '6');
-  assert.ok(await page.isVisible('text=1 link'));
+  // The link opens straight from the client's project list, in a new tab.
+  const chip = page.locator('#detail .link-chip');
+  assert.equal(await chip.count(), 1);
+  assert.equal(await chip.getAttribute('href'), 'https://drive.google.com/file/d/abc');
+  assert.equal(await chip.getAttribute('target'), '_blank');
+  assert.match(await chip.textContent(), /Drive/);
 });
 
 await step('changes a project status from the client page', async () => {
@@ -89,6 +94,10 @@ await step('shows the calendar month and list views', async () => {
   await page.click('[data-calmode=list]');
   const headers = await page.locator('.listview th').allTextContents();
   assert.deepEqual(headers.map(h => h.replace(/[↑↓]/g, '').trim()), ['Start', 'Project', 'Due', 'Days left', 'Links', 'Client', 'Status']);
+  assert.ok(await page.locator('.listview .link-chip[href="https://drive.google.com/file/d/abc"]').count() === 1, 'list links are clickable');
+  await page.click('#tab-projects');
+  assert.ok(await page.locator('.card .link-chip[href="https://drive.google.com/file/d/abc"]').count() === 1, 'project card links are clickable');
+  await page.click('#tab-calendar');
 });
 
 await step('adds a calendar entry from a day', async () => {

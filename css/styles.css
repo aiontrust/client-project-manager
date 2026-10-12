@@ -150,7 +150,11 @@ td.dates, td.num { font-family: var(--mono); font-size: .82rem; white-space: now
 .links .host { color: var(--muted); font-size: .8rem; margin-left: auto; white-space: nowrap; }
 .kind { font-size: .66rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 1px 6px; border-radius: 4px; background: var(--surface-2); color: var(--muted); flex: none; }
 .kind.drive { background: var(--done-soft); color: var(--done); }
-.link-count { font-family: var(--mono); font-size: .75rem; color: var(--accent); white-space: nowrap; }
+.link-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
+.link-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; padding: 3px 9px 3px 4px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); color: var(--fg); text-decoration: none; font-size: .8rem; font-weight: 500; }
+.link-chip:hover { border-color: var(--accent); background: var(--accent-soft); }
+.link-chip .ltxt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 22ch; }
+.link-chip::after { content: "\2197"; color: var(--muted); font-size: .75rem; }
 
 /* Board */
 .board-tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }

@@ -84,7 +84,15 @@
         <span class="host">${esc(hostOf(l.url))} ↗</span></a></li>`;
     }).join('')}</ul>`;
   }
-  const linkCount = links => links && links.length ? `<span class="link-count" title="${links.length} link${links.length > 1 ? 's' : ''}">${links.length} link${links.length > 1 ? 's' : ''}</span>` : '';
+  // A project's links as small buttons that open in a new tab: the first few, then "+N more".
+  function linkChips(links, max = 3) {
+    if (!links || !links.length) return '';
+    const chips = links.slice(0, max).map(l => {
+      const k = linkKind(l.url);
+      return `<a class="link-chip" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer" title="${esc(l.url)}"><span class="kind ${k}">${k === 'drive' ? 'Drive' : 'Web'}</span><span class="ltxt">${esc(l.label || hostOf(l.url))}</span></a>`;
+    }).join('');
+    return `<span class="link-chips">${chips}${links.length > max ? `<span class="mini">+${links.length - max} more</span>` : ''}</span>`;
+  }
   const linkRow = (l = { label: '', url: '' }) => `<div class="link-row">
       <input name="link-label" placeholder="Label, e.g. Site photos" value="${esc(l.label)}" aria-label="Link label" autocomplete="off">
       <input name="link-url" type="url" inputmode="url" placeholder="https://drive.google.com/…" value="${esc(l.url)}" aria-label="Link address" autocomplete="off">
@@ -262,7 +270,7 @@
         ${projects.length ? `<div class="table-wrap"><table>
           <thead><tr><th>Project</th><th>Dates</th><th>Status</th><th></th></tr></thead>
           <tbody>${projects.map(p => `<tr>
-            <td><button class="linkish" data-edit-project="${esc(p.id)}">${esc(p.name)}</button> ${dueFlag(p)} ${linkCount(p.links)}</td>
+            <td><button class="linkish" data-edit-project="${esc(p.id)}">${esc(p.name)}</button> ${dueFlag(p)}${p.links && p.links.length ? `<div style="margin-top:6px">${linkChips(p.links)}</div>` : ''}</td>
             <td class="dates">${fmtDate(p.startDate)} → ${fmtDate(p.endDate)}</td>
             <td>${statusControl(p)}</td>
             <td style="text-align:right">${readOnly ? '' : `<button class="btn ghost sm" data-edit-project="${esc(p.id)}">Edit</button>`}</td>
@@ -295,7 +303,8 @@
           </div>
           <button class="client" data-goto="${esc(p.clientId)}">${esc(clientName(p.clientId))}</button>
           <div class="mini" style="font-variant-numeric:tabular-nums">${fmtDate(p.startDate)} → ${fmtDate(p.endDate)}</div>
-          <div class="meta">${statusControl(p)} <span>${dueFlag(p)} ${linkCount(p.links)} ${p.example ? '<span class="example">Example</span>' : ''}</span></div>
+          ${linkChips(p.links)}
+          <div class="meta">${statusControl(p)} <span>${dueFlag(p)} ${p.example ? '<span class="example">Example</span>' : ''}</span></div>
         </article>`).join('') : `<div class="empty">Nothing ${s.label.toLowerCase()}.</div>`}
       </div>`;
     }).join('');
@@ -382,7 +391,7 @@
         <td><button class="linkish" data-edit-project="${esc(r.p.id)}">${esc(r.p.name)}</button> ${r.p.example ? '<span class="example">Example</span>' : ''}</td>
         <td class="dates">${fmtDate(r.p.endDate)}</td>
         <td class="num">${left}</td>
-        <td>${linkCount(r.p.links)}</td>
+        <td>${linkChips(r.p.links, 2)}</td>
         <td><button class="linkish" style="font-weight:400" data-goto="${esc(r.p.clientId)}">${esc(r.client)}</button></td>
         <td>${statusControl(r.p)}</td>
       </tr>`;
