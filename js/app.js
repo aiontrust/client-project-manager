@@ -203,7 +203,7 @@
     const el = $('contact-list');
     if (db && !state.loaded.contacts) { el.innerHTML = `<li class="empty">Loading clients…</li>`; return; }
     if (!contacts.length) {
-      el.innerHTML = `<li class="empty"><strong>No clients yet</strong>Add your first client to start tracking their projects.</li>`;
+      el.innerHTML = `<li class="empty none-yet"><strong>No clients yet</strong>Add your first client to start tracking their projects.</li>`;
       return;
     }
     if (!rows.length) { el.innerHTML = `<li class="empty">No clients match “${esc(state.search)}”.</li>`; return; }
@@ -220,6 +220,8 @@
   function renderDetail() {
     const el = $('detail');
     const c = state.contacts.get(state.selectedId);
+    // On phones the list sits right above, so "Pick a client" adds nothing there.
+    el.classList.toggle('picking', !c && state.contacts.size > 0);
     if (!c) {
       const has = state.contacts.size > 0;
       el.innerHTML = `<div class="empty" style="padding:56px 20px">
