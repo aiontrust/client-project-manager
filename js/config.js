@@ -7,9 +7,4 @@
 window.CPM_CONFIG = {
   supabaseUrl: 'https://nibivxjgpajlwbgmycwm.supabase.co',
   supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5pYml2eGpncGFqbHdiZ215Y3dtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE4MjIyNTYsImV4cCI6MjEwNzM5ODI1Nn0.SxHQ3nssfzxPLxR3PrN4HGD1PjSqZbIgoMbghSNlJG8',
-  // Google Drive file picker and photo previews. See docs/google-drive-setup.md.
-  // Leave empty to attach Drive files by pasting links only.
-  googleClientId: '',
-  googleApiKey: '',
-  googleAppId: '',
 };

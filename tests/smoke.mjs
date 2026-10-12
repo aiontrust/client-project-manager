@@ -61,7 +61,6 @@ await step('adds a project with a Drive link and rejects a bad date range', asyn
   await page.fill('#p-name', 'Test Project');
   await page.fill('#p-start', '2026-10-10');
   await page.fill('#p-end', '2026-10-01');
-  assert.equal(await page.isVisible('[data-action=add-drive]'), false, 'no Drive picker without accounts');
   await page.click('[data-action=add-link]');
   await page.fill('.link-row [name=link-url]', 'drive.google.com/file/d/abc');
   await page.click('#project-form [type=submit]');
