@@ -118,8 +118,20 @@ await step('a project card folds several links into a dropdown', async () => {
   assert.equal(await page.locator(`${row} .link-menu a`).count(), 3);
   const box = await page.locator(`${row} .link-menu ul`).boundingBox();
   assert.ok(box.x >= 0 && box.x + box.width <= page.viewportSize().width, 'dropdown fits on screen');
-  const onTop = await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest('.link-menu ul'), [box.x + box.width / 2, box.y + box.height - 4]);
-  assert.ok(onTop, 'dropdown is not clipped by the table');
+  const probe = await page.evaluate(([x, y]) => {
+    const e = document.elementFromPoint(x, y);
+    const menu = document.querySelector('.link-menu[open]');
+    const b = menu && menu.querySelector('summary').getBoundingClientRect();
+    return {
+      onTop: !!e?.closest('.link-menu ul'),
+      at: e ? e.outerHTML.slice(0, 90) : null,
+      open: !!menu,
+      button: b && [Math.round(b.left), Math.round(b.top), Math.round(b.bottom)],
+      view: [innerWidth, innerHeight, Math.round(scrollY)],
+      style: menu && menu.querySelector('ul').getAttribute('style'),
+    };
+  }, [box.x + box.width / 2, box.y + box.height - 4]);
+  assert.ok(probe.onTop, `dropdown is not clipped by the table: ${JSON.stringify({ box, ...probe })}`);
   // Scrolling a little keeps it open and moves it with its button.
   // Scrolling a little keeps it open, right next to its button (below it, or above when there's no room).
   const besideButton = async () => {
