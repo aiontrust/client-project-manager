@@ -107,6 +107,20 @@ await step('a project card folds several links into a dropdown', async () => {
   assert.equal(await links.nth(1).getAttribute('target'), '_blank');
   await page.click('#summary');
   assert.equal(await page.isVisible(`${card} .link-menu a`), false, 'clicking elsewhere closes it');
+  // The calendar list's Links column uses the same dropdown, floating above the table.
+  await page.click('#tab-calendar');
+  await page.click('[data-calmode=list]');
+  const row = '.listview tr:has-text("Test Project")';
+  assert.match(await page.textContent(`${row} .link-menu summary`), /Links\s*3/);
+  await page.click(`${row} .link-menu summary`);
+  assert.equal(await page.locator(`${row} .link-menu a`).count(), 3);
+  const box = await page.locator(`${row} .link-menu ul`).boundingBox();
+  assert.ok(box.x >= 0 && box.x + box.width <= page.viewportSize().width, 'dropdown fits on screen');
+  const onTop = await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest('.link-menu ul'), [box.x + box.width / 2, box.y + box.height - 4]);
+  assert.ok(onTop, 'dropdown is not clipped by the table');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.isVisible(`${row} .link-menu a`), false, 'Escape closes it');
+  await page.click('#tab-projects');
   // Back to one link for the checks that follow.
   await page.click(`${card} [data-edit-project]`);
   await page.locator('.link-row').nth(2).locator('[data-action=remove-link]').click();
