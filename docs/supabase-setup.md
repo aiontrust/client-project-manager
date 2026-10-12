@@ -28,8 +28,8 @@ Until these steps are done, the app keeps working as before and saves data in ea
 
 1. Back on the Supabase Google provider page, switch Google **on**, paste the Client ID and Client secret, and click **Save**.
 2. Open **Authentication → URL Configuration**:
-   - **Site URL:** `https://aiontrust.github.io/client-project-manager/`
-   - **Redirect URLs:** add `https://aiontrust.github.io/client-project-manager/` and `http://localhost:8080/`
+   - **Site URL:** `https://aiontrust.github.io/client-project-manager/`. This must be the app's address, not your Supabase project address: Supabase sends people here whenever a sign-in can't return to the address it started from.
+   - **Redirect URLs:** add `https://aiontrust.github.io/client-project-manager/**` and `http://localhost:8080/**`. The `**` covers every page and variation of the app's address, so sign-in returns to the app on any device.
 
 ## 4. Point the app at Supabase
 
@@ -68,6 +68,8 @@ These rules are enforced by the database itself, not just the app. `npm run test
 ## Troubleshooting
 
 - **"Access blocked" or "redirect_uri_mismatch" from Google:** the redirect URI in Google Cloud must exactly match the Supabase Callback URL.
+- **After signing in, a page shows `{"message":"No API key found in request"}` on your `….supabase.co` address:** the Site URL in Supabase is set to the Supabase project address. Set it to the app's address and add the `**` Redirect URLs from step 3.2. It often shows up on only some devices, because each opened the app at a slightly different address.
 - **Signed in, but sent back to the wrong address:** check the Site URL and Redirect URLs in Supabase.
+- **"Sign-in didn't finish" on the sign-in screen:** the message after it comes from Supabase or Google and names the problem, for example a provider that isn't switched on or a mismatched client secret.
 - **A teammate sees "Create your workspace" instead of yours:** they signed in with a different Google account than the one you invited. Invite that address, then have them reload.
 - **"Error 403: access_denied":** the Google app is in Testing mode and that person isn't a test user.

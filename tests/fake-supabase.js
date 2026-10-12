@@ -99,6 +99,7 @@
         async signInWithOAuth({ provider, options }) {
           if (provider !== 'google') return { error: { message: 'Only Google sign-in is set up' } };
           localStorage.setItem(SESSION_KEY, JSON.stringify({ user: window.FAKE_SUPABASE_USER }));
+          localStorage.setItem('fake.supabase.lastRedirect', options.redirectTo);
           setTimeout(() => location.assign(options.redirectTo), 0);
           return { error: null };
         },

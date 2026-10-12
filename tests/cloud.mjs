@@ -152,8 +152,28 @@ await step('signing out returns to the sign-in screen', async () => {
   await a.waitForSelector('#gate [data-action=sign-in]');
 });
 
+await step('a failed sign-in explains what happened and tidies the address', async () => {
+  const p = await openApp();
+  await p.evaluate(() => localStorage.removeItem('fake.supabase.session'));
+  await p.goto(base + '?from=google#error=server_error&error_description=Unable+to+exchange+external+code');
+  await p.waitForSelector('.gate-error');
+  assert.match(await p.textContent('.gate-error'), /Unable to exchange external code/);
+  assert.equal(new URL(p.url()).hash, '');
+  await p.close();
+});
+
+await step('signing in from index.html returns to the app folder', async () => {
+  const p = await openApp();
+  await p.evaluate(() => localStorage.removeItem('fake.supabase.session'));
+  await p.goto(base + 'index.html');
+  await p.waitForSelector('#gate [data-action=sign-in]');
+  await Promise.all([p.waitForNavigation(), p.click('[data-action=sign-in]')]);
+  assert.equal(await p.evaluate(() => localStorage.getItem('fake.supabase.lastRedirect')), base);
+  await p.close();
+});
+
 await step('raises no page errors', async () => {
-  assert.deepEqual(errors, []);
+  assert.deepEqual(errors, [], errors.join(' | '));
 });
 
 await browser.close();

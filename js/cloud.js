@@ -150,7 +150,9 @@ window.CPMCloud = (() => {
         return { id: u.id, email: u.email, name: meta.full_name || meta.name || '' };
       },
       async signIn() {
-        const redirectTo = location.origin + location.pathname;
+        // Always return to the app's folder address, so opening the app as
+        // ".../index.html" still matches the redirect URL allowed in Supabase.
+        const redirectTo = location.origin + location.pathname.replace(/\/[^/]*\.html?$/, '/');
         const { error } = await client.auth.signInWithOAuth({ provider: 'google', options: { redirectTo } });
         fail(error);
       },

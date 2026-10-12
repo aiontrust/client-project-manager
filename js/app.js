@@ -991,6 +991,7 @@
     } else if (mode === 'signin') {
       el.innerHTML = `<div class="gate-card">
         <h2>Sign in to your workspace</h2>
+        ${message ? `<p class="gate-error" role="alert">Sign-in didn\u2019t finish: ${esc(message)}. Try again, and if it keeps happening, see Troubleshooting in docs/supabase-setup.md.</p>` : ''}
         <p>Your team's clients, projects and calendar, kept in sync on every device.</p>
         <button class="btn primary" data-action="sign-in">Sign in with Google</button>
         <p class="hint">Joining a teammate's workspace? Sign in with the Google account for the email address they invited.</p>
@@ -1037,13 +1038,25 @@
     }
   }
 
-  async function startCloud(api) {
+  // Supabase reports a failed sign-in by sending the browser back with
+  // error and error_description in the address.
+  function readSignInError() {
+    for (const part of [location.hash.slice(1), location.search.slice(1)]) {
+      const params = new URLSearchParams(part);
+      const message = params.get('error_description') || params.get('error');
+      if (message) return message;
+    }
+    return '';
+  }
+
+  async function startCloud(api, signInError) {
     state.cloud = { api, user: null, workspace: null, workspaces: [] };
     gate('loading');
     api.onSignedOut(() => location.reload());
     try {
       state.cloud.user = await api.user();
-      if (!state.cloud.user) return gate('signin');
+      if (signInError) history.replaceState(null, '', location.pathname);
+      if (!state.cloud.user) return gate('signin', signInError);
       state.cloud.workspaces = await api.workspaces();
     } catch (e) {
       return gate('error', e.message);
@@ -1210,9 +1223,10 @@
       $('storage-note').textContent = 'Your data is saved with this page on claude.ai, so it follows you across devices.';
     } else {
       let cloud = null;
+      const signInError = readSignInError();
       try { cloud = window.CPMCloud ? await window.CPMCloud.connect(window.CPM_CONFIG) : null; }
       catch (e) { gate('error', e.message); return; }
-      if (cloud) { startCloud(cloud); return; }
+      if (cloud) { startCloud(cloud, signInError); return; }
       db = window.CPMLocalStore ? window.CPMLocalStore.open() : null;
     }
     if (!db) { $('offline').hidden = false; $('storage-note').textContent = 'Use Download backup before closing the page to keep your changes.'; state.loaded = { contacts: true, projects: true, entries: true }; render(); return; }
