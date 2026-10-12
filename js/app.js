@@ -74,18 +74,41 @@
     if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
     try { const x = new URL(u); return /\./.test(x.hostname) ? x.href : null; } catch { return null; }
   }
+  // Files attached from Drive also carry driveId and mimeType; photos carry
+  // `preview`, the path of a small saved copy everyone in the workspace can see.
+  function fileKind(l) {
+    const m = l.mimeType || '';
+    if (m.startsWith('image/')) return 'Photo';
+    if (m === 'application/pdf') return 'PDF';
+    if (m.startsWith('video/')) return 'Video';
+    if (m.includes('document')) return 'Doc';
+    if (m.includes('spreadsheet')) return 'Sheet';
+    if (m.includes('presentation')) return 'Slides';
+    return linkKind(l.url) === 'drive' ? 'Drive' : 'Web';
+  }
+  const thumb = l => `<a class="thumb" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer" title="${esc(l.label)}"><img data-preview="${esc(l.preview)}" alt="${esc(l.label)}"></a>`;
+  const thumbStrip = (links, n) => {
+    const t = (links || []).filter(l => l.preview).slice(0, n);
+    return t.length ? `<div class="thumbs small">${t.map(thumb).join('')}</div>` : '';
+  };
   function renderLinks(links) {
     if (!links || !links.length) return '';
-    return `<ul class="links">${links.map(l => {
-      const k = linkKind(l.url);
-      return `<li><a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">
-        <span class="kind ${k}">${k === 'drive' ? 'Drive' : 'Web'}</span>
+    const photos = links.filter(l => l.preview);
+    const others = links.filter(l => !l.preview);
+    return (photos.length ? `<div class="thumbs">${photos.map(thumb).join('')}</div>` : '') +
+      (others.length ? `<ul class="links">${others.map(l => `<li><a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">
+        <span class="kind ${linkKind(l.url)}">${fileKind(l)}</span>
         <span class="ltxt">${esc(l.label || hostOf(l.url))}</span>
-        <span class="host">${esc(hostOf(l.url))} ↗</span></a></li>`;
-    }).join('')}</ul>`;
+        <span class="host">${esc(hostOf(l.url))} ↗</span></a></li>`).join('')}</ul>` : '');
   }
   const linkCount = links => links && links.length ? `<span class="link-count" title="${links.length} link${links.length > 1 ? 's' : ''}">${links.length} link${links.length > 1 ? 's' : ''}</span>` : '';
-  const linkRow = (l = { label: '', url: '' }) => `<div class="link-row">
+  // Previews made from Drive photos but not saved yet: token -> { blob, url }.
+  const pendingPreviews = new Map();
+  const rowThumb = l => l.preview ? `<img data-preview="${esc(l.preview)}" alt="">`
+    : l.pending && pendingPreviews.has(l.pending) ? `<img src="${esc(pendingPreviews.get(l.pending).url)}" alt="">`
+    : `<span class="kind drive">${fileKind(l)}</span>`;
+  const linkRow = (l = { label: '', url: '' }) => `<div class="link-row${l.driveId ? ' drive-row' : ''}" data-url="${esc(l.url)}" data-drive-id="${esc(l.driveId || '')}" data-mime="${esc(l.mimeType || '')}" data-preview="${esc(l.preview || '')}" data-pending="${esc(l.pending || '')}">
+      ${l.driveId ? `<span class="row-thumb">${rowThumb(l)}</span>` : ''}
       <input name="link-label" placeholder="Label, e.g. Site photos" value="${esc(l.label)}" aria-label="Link label" autocomplete="off">
       <input name="link-url" type="url" inputmode="url" placeholder="https://drive.google.com/…" value="${esc(l.url)}" aria-label="Link address" autocomplete="off">
       <button type="button" class="btn ghost sm" data-action="remove-link" aria-label="Remove link">Remove</button>
@@ -95,20 +118,122 @@
       <div class="link-rows" id="link-rows">${(links || []).map(linkRow).join('')}</div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <button type="button" class="btn sm" data-action="add-link">+ Add link</button>
-        <span class="hint">Paste a website or Google Drive address. Use Drive's Share → Copy link.</span>
+        ${driveAvailable() ? `<button type="button" class="btn sm" data-action="add-drive"${window.CPMDrive.isReady() ? '' : ' disabled'}>${window.CPMDrive.isReady() ? '+ Add from Drive' : 'Loading Drive…'}</button>
+        <span class="hint">Pick photos and files from Google Drive, or paste a website address.</span>`
+        : `<span class="hint">Paste a website or Google Drive address. Use Drive's Share → Copy link.</span>`}
       </div>
     </div>`;
   function readLinks(form) {
     const out = [];
     for (const row of form.querySelectorAll('.link-row')) {
+      if (row.dataset.busy) return { error: 'Still making photo previews. Wait a moment, then save.' };
       const label = row.querySelector('[name="link-label"]').value.trim();
       const raw = row.querySelector('[name="link-url"]').value.trim();
       if (!label && !raw) continue;
       const url = normalizeUrl(raw);
       if (!url) return { error: raw ? `“${raw}” isn't a web address. Paste the full link, starting with https://.` : `Add the web address for “${label}”, or remove that row.` };
-      out.push({ label: label || (linkKind(url) === 'drive' ? 'Google Drive file' : hostOf(url)), url });
+      const link = { label: label || (linkKind(url) === 'drive' ? 'Google Drive file' : hostOf(url)), url };
+      // Keep the Drive file and its preview unless the address was changed.
+      const d = row.dataset;
+      if (d.driveId && normalizeUrl(d.url) === url) {
+        link.driveId = d.driveId;
+        if (d.mime) link.mimeType = d.mime;
+        if (d.preview) link.preview = d.preview;
+        else if (d.pending) link.pending = d.pending;
+      }
+      out.push(link);
     }
     return { links: out };
+  }
+
+  // ---------- Drive ----------
+  const driveAvailable = () => !!(state.cloud && state.cloud.workspace && !readOnly
+    && window.CPMDrive && window.CPMDrive.configured(window.CPM_CONFIG));
+  // Load Google's scripts when a form opens; the Drive button turns on once they're ready.
+  function prepareDrive() {
+    if (!driveAvailable()) return;
+    const buttons = () => document.querySelectorAll('[data-action="add-drive"]');
+    window.CPMDrive.prepare(window.CPM_CONFIG, state.cloud.user && state.cloud.user.email)
+      .then(() => buttons().forEach(b => { b.disabled = false; b.textContent = '+ Add from Drive'; }))
+      .catch(e => buttons().forEach(b => { b.textContent = 'Drive unavailable'; b.title = e.message; }));
+  }
+  // Called straight from the click, so Google's permission popup is allowed.
+  function addFromDrive(btn) {
+    let picking;
+    try { picking = window.CPMDrive.pick(); } catch (e) { toast(e.message); return; }
+    btn.disabled = true;
+    picking.then(async files => {
+      btn.disabled = false;
+      const rows = $('link-rows');
+      if (!rows) return;
+      for (const f of files) {
+        const blank = [...rows.querySelectorAll('.link-row')].find(r => !r.querySelector('[name="link-label"]').value && !r.querySelector('[name="link-url"]').value);
+        if (blank) blank.remove();
+        rows.insertAdjacentHTML('beforeend', linkRow({ label: f.name, url: f.url, driveId: f.id, mimeType: f.mimeType }));
+        const row = rows.lastElementChild;
+        if (!f.mimeType.startsWith('image/')) continue;
+        const slot = row.querySelector('.row-thumb');
+        slot.innerHTML = '<span class="kind drive">…</span>';
+        row.dataset.busy = '1';
+        const blob = await window.CPMDrive.preview(f);
+        delete row.dataset.busy;
+        if (blob) {
+          const token = newId();
+          pendingPreviews.set(token, { blob, url: URL.createObjectURL(blob) });
+          row.dataset.pending = token;
+        }
+        slot.innerHTML = rowThumb({ mimeType: f.mimeType, pending: row.dataset.pending });
+      }
+    }).catch(e => {
+      btn.disabled = false;
+      toast(`Google Drive: ${e.message}`);
+    });
+  }
+  // Saves the previews made for newly picked photos, just before the record is saved.
+  async function finalizeLinks(links) {
+    let failed = false;
+    for (const l of links) {
+      if (!l.pending) continue;
+      const p = pendingPreviews.get(l.pending);
+      delete l.pending;
+      if (!p || !state.cloud || !state.cloud.workspace) continue;
+      try {
+        l.preview = await state.cloud.api.uploadPreview(state.cloud.workspace.id, p.blob);
+        previewCache.set(l.preview, { url: p.url, exp: Infinity });
+      } catch {
+        failed = true;
+      }
+    }
+    if (failed) toast('Some photo previews couldn\u2019t be saved. The links were kept.');
+    return links;
+  }
+
+  // Signed addresses for saved previews: path -> { url, exp }.
+  const previewCache = new Map();
+  const previewsOf = rec => ((rec && rec.links) || []).map(l => l.preview).filter(Boolean);
+  async function hydratePreviews() {
+    const waiting = () => [...document.querySelectorAll('img[data-preview]:not([src])')];
+    if (!waiting().length) return;
+    const now = Date.now();
+    const need = [...new Set(waiting().map(i => i.dataset.preview))].filter(p => !(previewCache.get(p)?.exp > now));
+    if (need.length && state.cloud && state.cloud.workspace) {
+      try {
+        const urls = await state.cloud.api.previewUrls(need);
+        for (const p of need) previewCache.set(p, urls[p] ? { url: urls[p], exp: now + 50 * 60000 } : { url: '', exp: now + 5 * 60000 });
+      } catch {
+        return;
+      }
+    }
+    for (const img of waiting()) {
+      const c = previewCache.get(img.dataset.preview);
+      if (c && c.url) img.src = c.url;
+      else if (c || !state.cloud) img.closest('.thumb, .row-thumb')?.classList.add('missing');
+    }
+  }
+  function dropPreviews(paths) {
+    if (!paths.length || !state.cloud || !state.cloud.workspace) return;
+    paths.forEach(p => previewCache.delete(p));
+    state.cloud.api.removePreviews(paths).catch(() => {});
   }
 
   function toast(msg) {
@@ -121,14 +246,21 @@
   // ---------- persistence ----------
   const mapOf = col => state[col];
   async function save(col, id, data) {
+    const before = previewsOf(mapOf(col).get(id));
     if (!db) { mapOf(col).set(id, { id, ...data }); render(); return true; }
-    try { await db.collection(col).doc(id).set(data); return true; }
+    try { await db.collection(col).doc(id).set(data); }
     catch (e) { return handleWriteError(e); }
+    const kept = new Set(previewsOf(data));
+    dropPreviews(before.filter(p => !kept.has(p)));
+    return true;
   }
   async function remove(col, id) {
+    const before = previewsOf(mapOf(col).get(id));
     if (!db) { mapOf(col).delete(id); render(); return true; }
-    try { await db.collection(col).doc(id).delete(); return true; }
+    try { await db.collection(col).doc(id).delete(); }
     catch (e) { return handleWriteError(e); }
+    dropPreviews(before);
+    return true;
   }
   function handleWriteError(e) {
     if (e && e.code === 'invalid_argument') {
@@ -195,6 +327,7 @@
     renderDetail();
     renderBoard(contacts);
     renderCalendar();
+    hydratePreviews();
   }
 
   function renderList(contacts) {
@@ -295,6 +428,7 @@
           </div>
           <button class="client" data-goto="${esc(p.clientId)}">${esc(clientName(p.clientId))}</button>
           <div class="mini" style="font-variant-numeric:tabular-nums">${fmtDate(p.startDate)} → ${fmtDate(p.endDate)}</div>
+          ${thumbStrip(p.links, 3)}
           <div class="meta">${statusControl(p)} <span>${dueFlag(p)} ${linkCount(p.links)} ${p.example ? '<span class="example">Example</span>' : ''}</span></div>
         </article>`).join('') : `<div class="empty">Nothing ${s.label.toLowerCase()}.</div>`}
       </div>`;
@@ -396,6 +530,7 @@
   function openSheet(html, focusId, wide) {
     $('sheet').innerHTML = html;
     $('sheet').classList.toggle('wide', !!wide);
+    hydratePreviews();
     $('scrim').hidden = false;
     setTimeout(() => (focusId ? $(focusId) : $('sheet').querySelector('button, input'))?.focus(), 0);
   }
@@ -710,6 +845,7 @@
       </form>`, 'p-name');
     const form = $('project-form');
     form.dataset.projectId = p ? p.id : '';
+    prepareDrive();
     form.addEventListener('submit', async e => {
       e.preventDefault();
       const f = new FormData(form);
@@ -722,7 +858,7 @@
       const l = readLinks(form);
       if (l.error) return fail(l.error);
       const id = p ? p.id : newId();
-      const body = { ...data, links: l.links, createdAt: p?.createdAt || new Date().toISOString() };
+      const body = { ...data, links: await finalizeLinks(l.links), createdAt: p?.createdAt || new Date().toISOString() };
       if (p?.example) body.example = true;
       if (await save('projects', id, body)) { closeSheet(); render(); toast(p ? 'Project updated' : 'Project added'); }
     });
@@ -753,6 +889,7 @@
       </form>`, 'e-title');
     const form = $('entry-form');
     form.dataset.entryId = entry ? entry.id : '';
+    prepareDrive();
     form.addEventListener('submit', async e => {
       e.preventDefault();
       const f = new FormData(form);
@@ -764,7 +901,7 @@
       const l = readLinks(form);
       if (l.error) return fail(l.error);
       const id = entry ? entry.id : newId();
-      const body = { ...data, links: l.links, createdAt: entry?.createdAt || new Date().toISOString() };
+      const body = { ...data, links: await finalizeLinks(l.links), createdAt: entry?.createdAt || new Date().toISOString() };
       if (entry?.example) body.example = true;
       if (await save('entries', id, body)) {
         closeSheet();
@@ -850,6 +987,7 @@
       case 'export-pdf': exportReport('pdf'); break;
       case 'add-link': { const rows = $('link-rows'); rows.insertAdjacentHTML('beforeend', linkRow()); rows.lastElementChild.querySelector('input').focus(); break; }
       case 'remove-link': t.closest('.link-row')?.remove(); break;
+      case 'add-drive': addFromDrive(t); break;
       case 'ask-delete-contact': {
         if (!c) break;
         const n = projectsFor(c.id).length;

@@ -5,6 +5,10 @@
 // against real Postgres in tests/db.
 (() => {
   const DB_KEY = 'fake.supabase.db';
+  const FILES_KEY = 'fake.supabase.storage';
+  const readFiles = () => JSON.parse(localStorage.getItem(FILES_KEY) || '{}');
+  const writeFiles = f => localStorage.setItem(FILES_KEY, JSON.stringify(f));
+  const toDataUrl = blob => new Promise(resolve => { const r = new FileReader(); r.onload = () => resolve(r.result); r.readAsDataURL(blob); });
   const SESSION_KEY = 'fake.supabase.session';
   const bus = new BroadcastChannel('fake.supabase.realtime');
 
@@ -94,6 +98,30 @@
         };
       },
       removeChannel() { handlers.length = 0; },
+      storage: {
+        from() {
+          return {
+            async upload(path, blob) {
+              if (!me()) return { data: null, error: { message: 'Not signed in' } };
+              const files = readFiles();
+              if (files[path]) return { data: null, error: { message: 'The resource already exists' } };
+              files[path] = await toDataUrl(blob);
+              writeFiles(files);
+              return { data: { path }, error: null };
+            },
+            async createSignedUrls(paths) {
+              const files = readFiles();
+              return { data: paths.map(p => (files[p] ? { path: p, signedUrl: files[p], error: null } : { path: p, signedUrl: null, error: 'Object not found' })), error: null };
+            },
+            async remove(paths) {
+              const files = readFiles();
+              paths.forEach(p => delete files[p]);
+              writeFiles(files);
+              return { data: [], error: null };
+            },
+          };
+        },
+      },
       auth: {
         async getSession() { return { data: { session: session() }, error: null }; },
         async signInWithOAuth({ provider, options }) {
