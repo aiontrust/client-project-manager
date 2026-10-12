@@ -61,7 +61,6 @@ await step('adds a project with a Drive link and rejects a bad date range', asyn
   await page.fill('#p-name', 'Test Project');
   await page.fill('#p-start', '2026-10-10');
   await page.fill('#p-end', '2026-10-01');
-  assert.equal(await page.isVisible('[data-action=add-drive]'), false, 'no Drive picker without accounts');
   await page.click('[data-action=add-link]');
   await page.fill('.link-row [name=link-url]', 'drive.google.com/file/d/abc');
   await page.click('#project-form [type=submit]');
@@ -69,7 +68,12 @@ await step('adds a project with a Drive link and rejects a bad date range', asyn
   await page.fill('#p-end', '2026-10-20');
   await page.click('#project-form [type=submit]');
   await page.waitForFunction(() => document.querySelector('#count-projects').textContent === '6');
-  assert.ok(await page.isVisible('text=1 link'));
+  // The link opens straight from the client's project list, in a new tab.
+  const chip = page.locator('#detail .link-chip');
+  assert.equal(await chip.count(), 1);
+  assert.equal(await chip.getAttribute('href'), 'https://drive.google.com/file/d/abc');
+  assert.equal(await chip.getAttribute('target'), '_blank');
+  assert.match(await chip.textContent(), /Drive/);
 });
 
 await step('changes a project status from the client page', async () => {
@@ -83,6 +87,34 @@ await step('keeps data after a reload', async () => {
   assert.equal(await count(page, 'projects'), 6);
 });
 
+await step('a project card folds several links into a dropdown', async () => {
+  const card = '#board .card:has-text("Test Project")';
+  await page.click('#tab-projects');
+  await page.click(`${card} [data-edit-project]`);
+  await page.click('[data-action=add-link]');
+  await page.locator('.link-row').nth(1).locator('[name=link-label]').fill('Client brief');
+  await page.locator('.link-row').nth(1).locator('[name=link-url]').fill('https://example.com/brief');
+  await page.click('[data-action=add-link]');
+  await page.locator('.link-row').nth(2).locator('[name=link-url]').fill('https://drive.google.com/drive/folders/xyz');
+  await page.click('#project-form [type=submit]');
+  await page.waitForSelector(`${card} .link-menu summary`);
+  assert.match(await page.textContent(`${card} .link-menu summary`), /Links\s*3/);
+  assert.equal(await page.isVisible(`${card} .link-menu a`), false, 'closed until clicked');
+  await page.click(`${card} .link-menu summary`);
+  const links = page.locator(`${card} .link-menu a`);
+  assert.equal(await links.count(), 3);
+  assert.equal(await links.nth(1).getAttribute('href'), 'https://example.com/brief');
+  assert.equal(await links.nth(1).getAttribute('target'), '_blank');
+  await page.click('#summary');
+  assert.equal(await page.isVisible(`${card} .link-menu a`), false, 'clicking elsewhere closes it');
+  // Back to one link for the checks that follow.
+  await page.click(`${card} [data-edit-project]`);
+  await page.locator('.link-row').nth(2).locator('[data-action=remove-link]').click();
+  await page.locator('.link-row').nth(1).locator('[data-action=remove-link]').click();
+  await page.click('#project-form [type=submit]');
+  await page.waitForSelector(`${card} .link-chip`);
+});
+
 await step('shows the calendar month and list views', async () => {
   await page.click('#tab-calendar');
   await page.click('[data-calmode=month]');
@@ -90,6 +122,10 @@ await step('shows the calendar month and list views', async () => {
   await page.click('[data-calmode=list]');
   const headers = await page.locator('.listview th').allTextContents();
   assert.deepEqual(headers.map(h => h.replace(/[↑↓]/g, '').trim()), ['Start', 'Project', 'Due', 'Days left', 'Links', 'Client', 'Status']);
+  assert.ok(await page.locator('.listview .link-chip[href="https://drive.google.com/file/d/abc"]').count() === 1, 'list links are clickable');
+  await page.click('#tab-projects');
+  assert.ok(await page.locator('.card .link-chip[href="https://drive.google.com/file/d/abc"]').count() === 1, 'project card links are clickable');
+  await page.click('#tab-calendar');
 });
 
 await step('adds a calendar entry from a day', async () => {

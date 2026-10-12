@@ -200,25 +200,6 @@ window.CPMCloud = (() => {
       store(workspaceId) {
         return createStore(client, workspaceId);
       },
-      // Preview images of Drive photos (see supabase/migrations/0002).
-      async uploadPreview(workspaceId, blob) {
-        const path = `${workspaceId}/${crypto.randomUUID()}.jpg`;
-        const { error } = await client.storage.from('previews').upload(path, blob, { contentType: 'image/jpeg', upsert: false });
-        fail(error);
-        return path;
-      },
-      async previewUrls(paths) {
-        const { data, error } = await client.storage.from('previews').createSignedUrls(paths, 3600);
-        fail(error);
-        const out = {};
-        for (const d of data || []) if (d.signedUrl && !d.error) out[d.path] = d.signedUrl;
-        return out;
-      },
-      async removePreviews(paths) {
-        if (!paths.length) return;
-        const { error } = await client.storage.from('previews').remove(paths);
-        fail(error);
-      },
     };
     return account;
   }

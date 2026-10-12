@@ -74,41 +74,43 @@
     if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
     try { const x = new URL(u); return /\./.test(x.hostname) ? x.href : null; } catch { return null; }
   }
-  // Files attached from Drive also carry driveId and mimeType; photos carry
-  // `preview`, the path of a small saved copy everyone in the workspace can see.
-  function fileKind(l) {
-    const m = l.mimeType || '';
-    if (m.startsWith('image/')) return 'Photo';
-    if (m === 'application/pdf') return 'PDF';
-    if (m.startsWith('video/')) return 'Video';
-    if (m.includes('document')) return 'Doc';
-    if (m.includes('spreadsheet')) return 'Sheet';
-    if (m.includes('presentation')) return 'Slides';
-    return linkKind(l.url) === 'drive' ? 'Drive' : 'Web';
-  }
-  const thumb = l => `<a class="thumb" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer" title="${esc(l.label)}"><img data-preview="${esc(l.preview)}" alt="${esc(l.label)}"></a>`;
-  const thumbStrip = (links, n) => {
-    const t = (links || []).filter(l => l.preview).slice(0, n);
-    return t.length ? `<div class="thumbs small">${t.map(thumb).join('')}</div>` : '';
-  };
   function renderLinks(links) {
     if (!links || !links.length) return '';
-    const photos = links.filter(l => l.preview);
-    const others = links.filter(l => !l.preview);
-    return (photos.length ? `<div class="thumbs">${photos.map(thumb).join('')}</div>` : '') +
-      (others.length ? `<ul class="links">${others.map(l => `<li><a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">
-        <span class="kind ${linkKind(l.url)}">${fileKind(l)}</span>
+    return `<ul class="links">${links.map(l => {
+      const k = linkKind(l.url);
+      return `<li><a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">
+        <span class="kind ${k}">${k === 'drive' ? 'Drive' : 'Web'}</span>
         <span class="ltxt">${esc(l.label || hostOf(l.url))}</span>
-        <span class="host">${esc(hostOf(l.url))} ↗</span></a></li>`).join('')}</ul>` : '');
+        <span class="host">${esc(hostOf(l.url))} ↗</span></a></li>`;
+    }).join('')}</ul>`;
   }
-  const linkCount = links => links && links.length ? `<span class="link-count" title="${links.length} link${links.length > 1 ? 's' : ''}">${links.length} link${links.length > 1 ? 's' : ''}</span>` : '';
-  // Previews made from Drive photos but not saved yet: token -> { blob, url }.
-  const pendingPreviews = new Map();
-  const rowThumb = l => l.preview ? `<img data-preview="${esc(l.preview)}" alt="">`
-    : l.pending && pendingPreviews.has(l.pending) ? `<img src="${esc(pendingPreviews.get(l.pending).url)}" alt="">`
-    : `<span class="kind drive">${fileKind(l)}</span>`;
-  const linkRow = (l = { label: '', url: '' }) => `<div class="link-row${l.driveId ? ' drive-row' : ''}" data-url="${esc(l.url)}" data-drive-id="${esc(l.driveId || '')}" data-mime="${esc(l.mimeType || '')}" data-preview="${esc(l.preview || '')}" data-pending="${esc(l.pending || '')}">
-      ${l.driveId ? `<span class="row-thumb">${rowThumb(l)}</span>` : ''}
+  // A project's links as small buttons that open in a new tab: the first few, then "+N more".
+  // On project cards, two or more links fold into a dropdown to keep the card compact.
+  // The open one is remembered so a live update from a teammate doesn't close it.
+  let openLinkMenu = null;
+  function linkMenu(links, key) {
+    if (!links || !links.length) return '';
+    if (links.length === 1) return linkChips(links);
+    return `<details class="link-menu" data-menu="${esc(key)}"${openLinkMenu === key ? ' open' : ''}>
+      <summary>Links <span class="mini">${links.length}</span></summary>
+      <ul>${links.map(l => {
+        const k = linkKind(l.url);
+        return `<li><a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">
+          <span class="kind ${k}">${k === 'drive' ? 'Drive' : 'Web'}</span>
+          <span class="ltxt">${esc(l.label || hostOf(l.url))}</span>
+          <span class="host">${esc(hostOf(l.url))} ↗</span></a></li>`;
+      }).join('')}</ul>
+    </details>`;
+  }
+  function linkChips(links, max = 3) {
+    if (!links || !links.length) return '';
+    const chips = links.slice(0, max).map(l => {
+      const k = linkKind(l.url);
+      return `<a class="link-chip" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer" title="${esc(l.url)}"><span class="kind ${k}">${k === 'drive' ? 'Drive' : 'Web'}</span><span class="ltxt">${esc(l.label || hostOf(l.url))}</span></a>`;
+    }).join('');
+    return `<span class="link-chips">${chips}${links.length > max ? `<span class="mini">+${links.length - max} more</span>` : ''}</span>`;
+  }
+  const linkRow = (l = { label: '', url: '' }) => `<div class="link-row">
       <input name="link-label" placeholder="Label, e.g. Site photos" value="${esc(l.label)}" aria-label="Link label" autocomplete="off">
       <input name="link-url" type="url" inputmode="url" placeholder="https://drive.google.com/…" value="${esc(l.url)}" aria-label="Link address" autocomplete="off">
       <button type="button" class="btn ghost sm" data-action="remove-link" aria-label="Remove link">Remove</button>
@@ -118,122 +120,20 @@
       <div class="link-rows" id="link-rows">${(links || []).map(linkRow).join('')}</div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <button type="button" class="btn sm" data-action="add-link">+ Add link</button>
-        ${driveAvailable() ? `<button type="button" class="btn sm" data-action="add-drive"${window.CPMDrive.isReady() ? '' : ' disabled'}>${window.CPMDrive.isReady() ? '+ Add from Drive' : 'Loading Drive…'}</button>
-        <span class="hint">Pick photos and files from Google Drive, or paste a website address.</span>`
-        : `<span class="hint">Paste a website or Google Drive address. Use Drive's Share → Copy link.</span>`}
+        <span class="hint">Paste a website or Google Drive address. Use Drive's Share → Copy link.</span>
       </div>
     </div>`;
   function readLinks(form) {
     const out = [];
     for (const row of form.querySelectorAll('.link-row')) {
-      if (row.dataset.busy) return { error: 'Still making photo previews. Wait a moment, then save.' };
       const label = row.querySelector('[name="link-label"]').value.trim();
       const raw = row.querySelector('[name="link-url"]').value.trim();
       if (!label && !raw) continue;
       const url = normalizeUrl(raw);
       if (!url) return { error: raw ? `“${raw}” isn't a web address. Paste the full link, starting with https://.` : `Add the web address for “${label}”, or remove that row.` };
-      const link = { label: label || (linkKind(url) === 'drive' ? 'Google Drive file' : hostOf(url)), url };
-      // Keep the Drive file and its preview unless the address was changed.
-      const d = row.dataset;
-      if (d.driveId && normalizeUrl(d.url) === url) {
-        link.driveId = d.driveId;
-        if (d.mime) link.mimeType = d.mime;
-        if (d.preview) link.preview = d.preview;
-        else if (d.pending) link.pending = d.pending;
-      }
-      out.push(link);
+      out.push({ label: label || (linkKind(url) === 'drive' ? 'Google Drive file' : hostOf(url)), url });
     }
     return { links: out };
-  }
-
-  // ---------- Drive ----------
-  const driveAvailable = () => !!(state.cloud && state.cloud.workspace && !readOnly
-    && window.CPMDrive && window.CPMDrive.configured(window.CPM_CONFIG));
-  // Load Google's scripts when a form opens; the Drive button turns on once they're ready.
-  function prepareDrive() {
-    if (!driveAvailable()) return;
-    const buttons = () => document.querySelectorAll('[data-action="add-drive"]');
-    window.CPMDrive.prepare(window.CPM_CONFIG, state.cloud.user && state.cloud.user.email)
-      .then(() => buttons().forEach(b => { b.disabled = false; b.textContent = '+ Add from Drive'; }))
-      .catch(e => buttons().forEach(b => { b.textContent = 'Drive unavailable'; b.title = e.message; }));
-  }
-  // Called straight from the click, so Google's permission popup is allowed.
-  function addFromDrive(btn) {
-    let picking;
-    try { picking = window.CPMDrive.pick(); } catch (e) { toast(e.message); return; }
-    btn.disabled = true;
-    picking.then(async files => {
-      btn.disabled = false;
-      const rows = $('link-rows');
-      if (!rows) return;
-      for (const f of files) {
-        const blank = [...rows.querySelectorAll('.link-row')].find(r => !r.querySelector('[name="link-label"]').value && !r.querySelector('[name="link-url"]').value);
-        if (blank) blank.remove();
-        rows.insertAdjacentHTML('beforeend', linkRow({ label: f.name, url: f.url, driveId: f.id, mimeType: f.mimeType }));
-        const row = rows.lastElementChild;
-        if (!f.mimeType.startsWith('image/')) continue;
-        const slot = row.querySelector('.row-thumb');
-        slot.innerHTML = '<span class="kind drive">…</span>';
-        row.dataset.busy = '1';
-        const blob = await window.CPMDrive.preview(f);
-        delete row.dataset.busy;
-        if (blob) {
-          const token = newId();
-          pendingPreviews.set(token, { blob, url: URL.createObjectURL(blob) });
-          row.dataset.pending = token;
-        }
-        slot.innerHTML = rowThumb({ mimeType: f.mimeType, pending: row.dataset.pending });
-      }
-    }).catch(e => {
-      btn.disabled = false;
-      toast(`Google Drive: ${e.message}`);
-    });
-  }
-  // Saves the previews made for newly picked photos, just before the record is saved.
-  async function finalizeLinks(links) {
-    let failed = false;
-    for (const l of links) {
-      if (!l.pending) continue;
-      const p = pendingPreviews.get(l.pending);
-      delete l.pending;
-      if (!p || !state.cloud || !state.cloud.workspace) continue;
-      try {
-        l.preview = await state.cloud.api.uploadPreview(state.cloud.workspace.id, p.blob);
-        previewCache.set(l.preview, { url: p.url, exp: Infinity });
-      } catch {
-        failed = true;
-      }
-    }
-    if (failed) toast('Some photo previews couldn\u2019t be saved. The links were kept.');
-    return links;
-  }
-
-  // Signed addresses for saved previews: path -> { url, exp }.
-  const previewCache = new Map();
-  const previewsOf = rec => ((rec && rec.links) || []).map(l => l.preview).filter(Boolean);
-  async function hydratePreviews() {
-    const waiting = () => [...document.querySelectorAll('img[data-preview]:not([src])')];
-    if (!waiting().length) return;
-    const now = Date.now();
-    const need = [...new Set(waiting().map(i => i.dataset.preview))].filter(p => !(previewCache.get(p)?.exp > now));
-    if (need.length && state.cloud && state.cloud.workspace) {
-      try {
-        const urls = await state.cloud.api.previewUrls(need);
-        for (const p of need) previewCache.set(p, urls[p] ? { url: urls[p], exp: now + 50 * 60000 } : { url: '', exp: now + 5 * 60000 });
-      } catch {
-        return;
-      }
-    }
-    for (const img of waiting()) {
-      const c = previewCache.get(img.dataset.preview);
-      if (c && c.url) img.src = c.url;
-      else if (c || !state.cloud) img.closest('.thumb, .row-thumb')?.classList.add('missing');
-    }
-  }
-  function dropPreviews(paths) {
-    if (!paths.length || !state.cloud || !state.cloud.workspace) return;
-    paths.forEach(p => previewCache.delete(p));
-    state.cloud.api.removePreviews(paths).catch(() => {});
   }
 
   function toast(msg) {
@@ -246,21 +146,14 @@
   // ---------- persistence ----------
   const mapOf = col => state[col];
   async function save(col, id, data) {
-    const before = previewsOf(mapOf(col).get(id));
     if (!db) { mapOf(col).set(id, { id, ...data }); render(); return true; }
-    try { await db.collection(col).doc(id).set(data); }
+    try { await db.collection(col).doc(id).set(data); return true; }
     catch (e) { return handleWriteError(e); }
-    const kept = new Set(previewsOf(data));
-    dropPreviews(before.filter(p => !kept.has(p)));
-    return true;
   }
   async function remove(col, id) {
-    const before = previewsOf(mapOf(col).get(id));
     if (!db) { mapOf(col).delete(id); render(); return true; }
-    try { await db.collection(col).doc(id).delete(); }
+    try { await db.collection(col).doc(id).delete(); return true; }
     catch (e) { return handleWriteError(e); }
-    dropPreviews(before);
-    return true;
   }
   function handleWriteError(e) {
     if (e && e.code === 'invalid_argument') {
@@ -327,7 +220,6 @@
     renderDetail();
     renderBoard(contacts);
     renderCalendar();
-    hydratePreviews();
   }
 
   function renderList(contacts) {
@@ -395,7 +287,7 @@
         ${projects.length ? `<div class="table-wrap"><table>
           <thead><tr><th>Project</th><th>Dates</th><th>Status</th><th></th></tr></thead>
           <tbody>${projects.map(p => `<tr>
-            <td><button class="linkish" data-edit-project="${esc(p.id)}">${esc(p.name)}</button> ${dueFlag(p)} ${linkCount(p.links)}</td>
+            <td><button class="linkish" data-edit-project="${esc(p.id)}">${esc(p.name)}</button> ${dueFlag(p)}${p.links && p.links.length ? `<div style="margin-top:6px">${linkChips(p.links)}</div>` : ''}</td>
             <td class="dates">${fmtDate(p.startDate)} → ${fmtDate(p.endDate)}</td>
             <td>${statusControl(p)}</td>
             <td style="text-align:right">${readOnly ? '' : `<button class="btn ghost sm" data-edit-project="${esc(p.id)}">Edit</button>`}</td>
@@ -428,8 +320,8 @@
           </div>
           <button class="client" data-goto="${esc(p.clientId)}">${esc(clientName(p.clientId))}</button>
           <div class="mini" style="font-variant-numeric:tabular-nums">${fmtDate(p.startDate)} → ${fmtDate(p.endDate)}</div>
-          ${thumbStrip(p.links, 3)}
-          <div class="meta">${statusControl(p)} <span>${dueFlag(p)} ${linkCount(p.links)} ${p.example ? '<span class="example">Example</span>' : ''}</span></div>
+          ${linkMenu(p.links, p.id)}
+          <div class="meta">${statusControl(p)} <span>${dueFlag(p)} ${p.example ? '<span class="example">Example</span>' : ''}</span></div>
         </article>`).join('') : `<div class="empty">Nothing ${s.label.toLowerCase()}.</div>`}
       </div>`;
     }).join('');
@@ -516,7 +408,7 @@
         <td><button class="linkish" data-edit-project="${esc(r.p.id)}">${esc(r.p.name)}</button> ${r.p.example ? '<span class="example">Example</span>' : ''}</td>
         <td class="dates">${fmtDate(r.p.endDate)}</td>
         <td class="num">${left}</td>
-        <td>${linkCount(r.p.links)}</td>
+        <td>${linkChips(r.p.links, 2)}</td>
         <td><button class="linkish" style="font-weight:400" data-goto="${esc(r.p.clientId)}">${esc(r.client)}</button></td>
         <td>${statusControl(r.p)}</td>
       </tr>`;
@@ -530,7 +422,6 @@
   function openSheet(html, focusId, wide) {
     $('sheet').innerHTML = html;
     $('sheet').classList.toggle('wide', !!wide);
-    hydratePreviews();
     $('scrim').hidden = false;
     setTimeout(() => (focusId ? $(focusId) : $('sheet').querySelector('button, input'))?.focus(), 0);
   }
@@ -845,7 +736,6 @@
       </form>`, 'p-name');
     const form = $('project-form');
     form.dataset.projectId = p ? p.id : '';
-    prepareDrive();
     form.addEventListener('submit', async e => {
       e.preventDefault();
       const f = new FormData(form);
@@ -858,7 +748,7 @@
       const l = readLinks(form);
       if (l.error) return fail(l.error);
       const id = p ? p.id : newId();
-      const body = { ...data, links: await finalizeLinks(l.links), createdAt: p?.createdAt || new Date().toISOString() };
+      const body = { ...data, links: l.links, createdAt: p?.createdAt || new Date().toISOString() };
       if (p?.example) body.example = true;
       if (await save('projects', id, body)) { closeSheet(); render(); toast(p ? 'Project updated' : 'Project added'); }
     });
@@ -889,7 +779,6 @@
       </form>`, 'e-title');
     const form = $('entry-form');
     form.dataset.entryId = entry ? entry.id : '';
-    prepareDrive();
     form.addEventListener('submit', async e => {
       e.preventDefault();
       const f = new FormData(form);
@@ -901,7 +790,7 @@
       const l = readLinks(form);
       if (l.error) return fail(l.error);
       const id = entry ? entry.id : newId();
-      const body = { ...data, links: await finalizeLinks(l.links), createdAt: entry?.createdAt || new Date().toISOString() };
+      const body = { ...data, links: l.links, createdAt: entry?.createdAt || new Date().toISOString() };
       if (entry?.example) body.example = true;
       if (await save('entries', id, body)) {
         closeSheet();
@@ -923,7 +812,27 @@
   $('add-entry').addEventListener('click', () => entryForm(null, state.cal.mode === 'month' && state.cal.cursor !== monthStart(todayISO()) ? state.cal.cursor : todayISO()));
   $('open-report').addEventListener('click', reportSheet);
   $('scrim').addEventListener('click', e => { if (e.target === $('scrim')) closeSheet(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('scrim').hidden) closeSheet(); });
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    const menu = document.querySelector('.link-menu[open]');
+    if (menu) { menu.open = false; menu.querySelector('summary').focus(); return; }
+    if (!$('scrim').hidden) closeSheet();
+  });
+  // One link dropdown open at a time; clicking elsewhere closes it.
+  document.addEventListener('toggle', e => {
+    const menu = e.target;
+    if (!menu.classList || !menu.classList.contains('link-menu')) return;
+    if (menu.open) {
+      openLinkMenu = menu.dataset.menu;
+      document.querySelectorAll('.link-menu[open]').forEach(m => { if (m !== menu) m.open = false; });
+    } else if (openLinkMenu === menu.dataset.menu) {
+      openLinkMenu = null;
+    }
+  }, true);
+  document.addEventListener('click', e => {
+    const menu = document.querySelector('.link-menu[open]');
+    if (menu && !menu.contains(e.target)) menu.open = false;
+  });
 
   document.addEventListener('change', async e => {
     const id = e.target.dataset?.status;
@@ -987,7 +896,6 @@
       case 'export-pdf': exportReport('pdf'); break;
       case 'add-link': { const rows = $('link-rows'); rows.insertAdjacentHTML('beforeend', linkRow()); rows.lastElementChild.querySelector('input').focus(); break; }
       case 'remove-link': t.closest('.link-row')?.remove(); break;
-      case 'add-drive': addFromDrive(t); break;
       case 'ask-delete-contact': {
         if (!c) break;
         const n = projectsFor(c.id).length;

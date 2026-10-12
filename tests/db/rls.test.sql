@@ -161,40 +161,6 @@ insert into public.projects (workspace_id, id, name, client_id) select id, 'p5',
 delete from public.contacts where id = 'c1';
 select pg_temp.check((select count(*) = 0 from public.projects), 'deleting a client deletes their projects');
 
--- Drive preview images -------------------------------------------------
-reset role;
-select pg_temp.check((select public = false and allowed_mime_types = array['image/jpeg'] from storage.buckets where id = 'previews'),
-  'previews bucket is private and only takes JPEGs');
-set role authenticated;
-create temp table paths (who text primary key, path text);
-grant all on paths to authenticated;
-insert into paths select 'acme', id || '/' || gen_random_uuid() || '.jpg' from ids where name = 'acme';
-insert into paths select 'other', id || '/' || gen_random_uuid() || '.jpg' from ids where name = 'other';
-
-select pg_temp.act_as('olivia');
-insert into storage.objects (bucket_id, name) select 'previews', path from paths where who = 'acme';
-select pg_temp.check((select count(*) = 1 from storage.objects), 'members add and see previews in their workspace');
-select pg_temp.check(pg_temp.refused($$ insert into storage.objects (bucket_id, name) select 'previews', path from paths where who = 'other' $$),
-  'members cannot add previews to another workspace');
-select pg_temp.check(pg_temp.refused($$ insert into storage.objects (bucket_id, name) select 'previews', id || '/../escape.jpg' from ids where name = 'acme' $$),
-  'preview paths must be <workspace>/<id>.jpg');
-select pg_temp.check(pg_temp.refused($$ insert into storage.objects (bucket_id, name) values ('previews', 'not-a-workspace/' || gen_random_uuid() || '.jpg') $$),
-  'previews outside any workspace are refused');
-
-select pg_temp.act_as('nina');
-select pg_temp.check((select count(*) = 0 from storage.objects), 'outsiders cannot see a workspace''s previews');
-delete from storage.objects;
-select pg_temp.act_as('mark');
-select pg_temp.check((select count(*) = 0 from storage.objects), 'removed members lose access to previews');
-select pg_temp.act_as('olivia');
-select pg_temp.check((select count(*) = 1 from storage.objects), 'outsider deletes change nothing');
-delete from storage.objects;
-select pg_temp.check((select count(*) = 0 from storage.objects), 'members delete their workspace''s previews');
-
-select pg_temp.act_as('');
-select pg_temp.check(pg_temp.refused($$ insert into storage.objects (bucket_id, name) select 'previews', path from paths where who = 'acme' $$),
-  'signed-out visitors cannot add previews');
-
 reset role;
 select pg_temp.check((select count(*) = 3 from pg_publication_tables where pubname = 'supabase_realtime'),
   'clients, projects and entries broadcast live changes');
