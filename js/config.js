@@ -5,6 +5,6 @@
 // The anon key is meant to be public: the database's row level security
 // decides what each signed-in person can see and change.
 window.CPM_CONFIG = {
-  supabaseUrl: '',
-  supabaseAnonKey: '',
+  supabaseUrl: 'https://nibivxjgpajlwbgmycwm.supabase.co/rest/v1/',
+  supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5pYml2eGpncGFqbHdiZ215Y3dtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE4MjIyNTYsImV4cCI6MjEwNzM5ODI1Nn0.SxHQ3nssfzxPLxR3PrN4HGD1PjSqZbIgoMbghSNlJG8',
 };
