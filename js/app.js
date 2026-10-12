@@ -85,6 +85,23 @@
     }).join('')}</ul>`;
   }
   // A project's links as small buttons that open in a new tab: the first few, then "+N more".
+  // On project cards, two or more links fold into a dropdown to keep the card compact.
+  // The open one is remembered so a live update from a teammate doesn't close it.
+  let openLinkMenu = null;
+  function linkMenu(links, key) {
+    if (!links || !links.length) return '';
+    if (links.length === 1) return linkChips(links);
+    return `<details class="link-menu" data-menu="${esc(key)}"${openLinkMenu === key ? ' open' : ''}>
+      <summary>Links <span class="mini">${links.length}</span></summary>
+      <ul>${links.map(l => {
+        const k = linkKind(l.url);
+        return `<li><a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">
+          <span class="kind ${k}">${k === 'drive' ? 'Drive' : 'Web'}</span>
+          <span class="ltxt">${esc(l.label || hostOf(l.url))}</span>
+          <span class="host">${esc(hostOf(l.url))} ↗</span></a></li>`;
+      }).join('')}</ul>
+    </details>`;
+  }
   function linkChips(links, max = 3) {
     if (!links || !links.length) return '';
     const chips = links.slice(0, max).map(l => {
@@ -303,7 +320,7 @@
           </div>
           <button class="client" data-goto="${esc(p.clientId)}">${esc(clientName(p.clientId))}</button>
           <div class="mini" style="font-variant-numeric:tabular-nums">${fmtDate(p.startDate)} → ${fmtDate(p.endDate)}</div>
-          ${linkChips(p.links)}
+          ${linkMenu(p.links, p.id)}
           <div class="meta">${statusControl(p)} <span>${dueFlag(p)} ${p.example ? '<span class="example">Example</span>' : ''}</span></div>
         </article>`).join('') : `<div class="empty">Nothing ${s.label.toLowerCase()}.</div>`}
       </div>`;
@@ -795,7 +812,27 @@
   $('add-entry').addEventListener('click', () => entryForm(null, state.cal.mode === 'month' && state.cal.cursor !== monthStart(todayISO()) ? state.cal.cursor : todayISO()));
   $('open-report').addEventListener('click', reportSheet);
   $('scrim').addEventListener('click', e => { if (e.target === $('scrim')) closeSheet(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('scrim').hidden) closeSheet(); });
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    const menu = document.querySelector('.link-menu[open]');
+    if (menu) { menu.open = false; menu.querySelector('summary').focus(); return; }
+    if (!$('scrim').hidden) closeSheet();
+  });
+  // One link dropdown open at a time; clicking elsewhere closes it.
+  document.addEventListener('toggle', e => {
+    const menu = e.target;
+    if (!menu.classList || !menu.classList.contains('link-menu')) return;
+    if (menu.open) {
+      openLinkMenu = menu.dataset.menu;
+      document.querySelectorAll('.link-menu[open]').forEach(m => { if (m !== menu) m.open = false; });
+    } else if (openLinkMenu === menu.dataset.menu) {
+      openLinkMenu = null;
+    }
+  }, true);
+  document.addEventListener('click', e => {
+    const menu = document.querySelector('.link-menu[open]');
+    if (menu && !menu.contains(e.target)) menu.open = false;
+  });
 
   document.addEventListener('change', async e => {
     const id = e.target.dataset?.status;

@@ -150,6 +150,17 @@ td.dates, td.num { font-family: var(--mono); font-size: .82rem; white-space: now
 .links .host { color: var(--muted); font-size: .8rem; margin-left: auto; white-space: nowrap; }
 .kind { font-size: .66rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 1px 6px; border-radius: 4px; background: var(--surface-2); color: var(--muted); flex: none; }
 .kind.drive { background: var(--done-soft); color: var(--done); }
+.link-menu { position: relative; justify-self: start; }
+.link-menu summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); font-size: .8rem; font-weight: 500; cursor: pointer; user-select: none; }
+.link-menu summary::-webkit-details-marker { display: none; }
+.link-menu summary::after { content: ""; width: 6px; height: 6px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: translateY(-2px) rotate(45deg); transition: transform .15s; }
+.link-menu[open] summary { border-color: var(--accent); background: var(--accent-soft); }
+.link-menu[open] summary::after { transform: translateY(1px) rotate(-135deg); }
+.link-menu ul { position: absolute; z-index: 5; top: calc(100% + 6px); left: 0; width: max-content; min-width: 240px; max-width: min(340px, calc(100vw - 48px)); margin: 0; padding: 6px; list-style: none; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); display: grid; gap: 2px; }
+.link-menu li a { display: flex; gap: 8px; align-items: center; padding: 7px 8px; border-radius: 6px; color: var(--fg); text-decoration: none; font-size: .88rem; min-width: 0; }
+.link-menu li a:hover, .link-menu li a:focus-visible { background: var(--accent-soft); }
+.link-menu .ltxt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link-menu .host { color: var(--muted); font-size: .76rem; margin-left: auto; white-space: nowrap; }
 .link-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
 .link-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; padding: 3px 9px 3px 4px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); color: var(--fg); text-decoration: none; font-size: .8rem; font-weight: 500; }
 .link-chip:hover { border-color: var(--accent); background: var(--accent-soft); }
