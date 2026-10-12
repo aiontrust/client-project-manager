@@ -111,6 +111,8 @@ await step('a project card folds several links into a dropdown', async () => {
   await page.click('#tab-calendar');
   await page.click('[data-calmode=list]');
   const row = '.listview tr:has-text("Test Project")';
+  // A short window puts the row below the fold, so opening it scrolls the page first.
+  await page.setViewportSize({ width: 1280, height: 420 });
   assert.match(await page.textContent(`${row} .link-menu summary`), /Links\s*3/);
   await page.click(`${row} .link-menu summary`);
   assert.equal(await page.locator(`${row} .link-menu a`).count(), 3);
@@ -118,8 +120,22 @@ await step('a project card folds several links into a dropdown', async () => {
   assert.ok(box.x >= 0 && box.x + box.width <= page.viewportSize().width, 'dropdown fits on screen');
   const onTop = await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest('.link-menu ul'), [box.x + box.width / 2, box.y + box.height - 4]);
   assert.ok(onTop, 'dropdown is not clipped by the table');
+  // Scrolling a little keeps it open and moves it with its button.
+  // Scrolling a little keeps it open, right next to its button (below it, or above when there's no room).
+  const besideButton = async () => {
+    const b = await page.locator(`${row} .link-menu summary`).boundingBox();
+    const l = await page.locator(`${row} .link-menu ul`).boundingBox();
+    return Math.abs(l.y - (b.y + b.height + 6)) <= 2 || Math.abs(l.y + l.height - (b.y - 6)) <= 2;
+  };
+  const buttonBefore = (await page.locator(`${row} .link-menu summary`).boundingBox()).y;
+  await page.mouse.wheel(0, -40);
+  await page.waitForTimeout(150);
+  assert.ok(await page.isVisible(`${row} .link-menu a`), 'stays open while its button is on screen');
+  assert.notEqual((await page.locator(`${row} .link-menu summary`).boundingBox()).y, buttonBefore, 'the page scrolled');
+  assert.ok(await besideButton(), 'moves with its button');
   await page.keyboard.press('Escape');
   assert.equal(await page.isVisible(`${row} .link-menu a`), false, 'Escape closes it');
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.click('#tab-projects');
   // Back to one link for the checks that follow.
   await page.click(`${card} [data-edit-project]`);
