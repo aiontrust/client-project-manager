@@ -248,6 +248,7 @@ tr.group td { background: var(--bg); font-family: var(--display); font-weight: 6
 .gate-card .field input { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
 .gate-card .field label { font-size: .82rem; font-weight: 600; color: var(--muted); }
 .gate-card .field .err { color: var(--danger); font-size: .8rem; }
+.gate-error { background: var(--danger-soft); color: var(--danger); padding: 10px 12px; border-radius: 8px; font-size: .9rem; }
 .notice.import { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; background: var(--accent-soft); }
 
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(20px + env(safe-area-inset-bottom, 0px)); background: var(--fg); color: var(--bg); padding: 9px 16px; border-radius: 8px; font-size: .9rem; z-index: 30; box-shadow: var(--shadow); max-width: calc(100% - 32px); }

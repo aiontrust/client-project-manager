@@ -27,6 +27,8 @@ async function openApp(context, width = 1280) {
   page.on('pageerror', e => errors.push(e.message));
   // Fonts and the PDF library come from CDNs; keep the test offline and fast.
   await page.route(/fonts\.(googleapis|gstatic)\.com|cdnjs\.cloudflare\.com/, r => r.abort());
+  // Browser-only mode: switch accounts off whatever js/config.js says.
+  await page.route(/\/js\/config\.js$/, r => r.fulfill({ contentType: 'text/javascript', body: "window.CPM_CONFIG = { supabaseUrl: '', supabaseAnonKey: '' };" }));
   await page.goto(base);
   return page;
 }
