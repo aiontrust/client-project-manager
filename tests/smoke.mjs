@@ -114,7 +114,13 @@ await step('a project card folds several links into a dropdown', async () => {
   // A short window puts the row below the fold, so opening it scrolls the page first.
   await page.setViewportSize({ width: 1280, height: 420 });
   assert.match(await page.textContent(`${row} .link-menu summary`), /Links\s*3/);
-  await page.click(`${row} .link-menu summary`);
+  await page.locator(`${row} .link-menu summary`).scrollIntoViewIfNeeded();
+  // It must float from the moment it opens, without waiting for the browser's later toggle event.
+  const floatsAtOnce = await page.locator(`${row} .link-menu`).evaluate(menu => {
+    menu.querySelector('summary').click();
+    return menu.open && menu.querySelector('ul').style.position === 'fixed';
+  });
+  assert.ok(floatsAtOnce, 'floats as soon as it opens');
   assert.equal(await page.locator(`${row} .link-menu a`).count(), 3);
   const box = await page.locator(`${row} .link-menu ul`).boundingBox();
   assert.ok(box.x >= 0 && box.x + box.width <= page.viewportSize().width, 'dropdown fits on screen');
