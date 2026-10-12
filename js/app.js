@@ -844,13 +844,20 @@
       openLinkMenu = null;
     }
   }, true);
-  // A floating dropdown would drift from its button, so scrolling or resizing closes it.
-  const closeFloatingMenu = () => {
+  // While the page or table scrolls, a floating dropdown follows its button,
+  // and closes once the button is no longer visible.
+  const followFloatingMenu = () => {
     const menu = document.querySelector('.table-wrap .link-menu[open]');
-    if (menu) menu.open = false;
+    if (!menu) return;
+    const button = menu.querySelector('summary').getBoundingClientRect();
+    const area = menu.closest('.table-wrap').getBoundingClientRect();
+    const visible = button.bottom > Math.max(0, area.top) && button.top < Math.min(window.innerHeight, area.bottom)
+      && button.right > Math.max(0, area.left) && button.left < Math.min(window.innerWidth, area.right);
+    if (visible) placeLinkMenu(menu);
+    else menu.open = false;
   };
-  document.addEventListener('scroll', closeFloatingMenu, true);
-  window.addEventListener('resize', closeFloatingMenu);
+  document.addEventListener('scroll', followFloatingMenu, { capture: true, passive: true });
+  window.addEventListener('resize', followFloatingMenu);
   document.addEventListener('click', e => {
     const menu = document.querySelector('.link-menu[open]');
     if (menu && !menu.contains(e.target)) menu.open = false;
