@@ -320,7 +320,7 @@
           </div>
           <button class="client" data-goto="${esc(p.clientId)}">${esc(clientName(p.clientId))}</button>
           <div class="mini" style="font-variant-numeric:tabular-nums">${fmtDate(p.startDate)} → ${fmtDate(p.endDate)}</div>
-          ${linkMenu(p.links, p.id)}
+          ${linkMenu(p.links, 'board:' + p.id)}
           <div class="meta">${statusControl(p)} <span>${dueFlag(p)} ${p.example ? '<span class="example">Example</span>' : ''}</span></div>
         </article>`).join('') : `<div class="empty">Nothing ${s.label.toLowerCase()}.</div>`}
       </div>`;
@@ -408,7 +408,7 @@
         <td><button class="linkish" data-edit-project="${esc(r.p.id)}">${esc(r.p.name)}</button> ${r.p.example ? '<span class="example">Example</span>' : ''}</td>
         <td class="dates">${fmtDate(r.p.endDate)}</td>
         <td class="num">${left}</td>
-        <td>${linkChips(r.p.links, 2)}</td>
+        <td>${linkMenu(r.p.links, 'list:' + r.p.id)}</td>
         <td><button class="linkish" style="font-weight:400" data-goto="${esc(r.p.clientId)}">${esc(r.client)}</button></td>
         <td>${statusControl(r.p)}</td>
       </tr>`;
@@ -818,6 +818,20 @@
     if (menu) { menu.open = false; menu.querySelector('summary').focus(); return; }
     if (!$('scrim').hidden) closeSheet();
   });
+  // In the calendar list the table scrolls sideways, which would clip the
+  // dropdown, so there it floats above the page next to its button instead.
+  function placeLinkMenu(menu) {
+    const list = menu.querySelector('ul');
+    if (!menu.closest('.table-wrap')) { list.removeAttribute('style'); return; }
+    const button = menu.querySelector('summary').getBoundingClientRect();
+    list.style.position = 'fixed';
+    const w = list.offsetWidth, h = list.offsetHeight;
+    const left = Math.max(16, Math.min(button.left, window.innerWidth - w - 16));
+    const below = button.bottom + 6;
+    const top = below + h > window.innerHeight - 8 && button.top - h - 6 > 8 ? button.top - h - 6 : below;
+    list.style.left = left + 'px';
+    list.style.top = top + 'px';
+  }
   // One link dropdown open at a time; clicking elsewhere closes it.
   document.addEventListener('toggle', e => {
     const menu = e.target;
@@ -825,10 +839,18 @@
     if (menu.open) {
       openLinkMenu = menu.dataset.menu;
       document.querySelectorAll('.link-menu[open]').forEach(m => { if (m !== menu) m.open = false; });
+      placeLinkMenu(menu);
     } else if (openLinkMenu === menu.dataset.menu) {
       openLinkMenu = null;
     }
   }, true);
+  // A floating dropdown would drift from its button, so scrolling or resizing closes it.
+  const closeFloatingMenu = () => {
+    const menu = document.querySelector('.table-wrap .link-menu[open]');
+    if (menu) menu.open = false;
+  };
+  document.addEventListener('scroll', closeFloatingMenu, true);
+  window.addEventListener('resize', closeFloatingMenu);
   document.addEventListener('click', e => {
     const menu = document.querySelector('.link-menu[open]');
     if (menu && !menu.contains(e.target)) menu.open = false;
