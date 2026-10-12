@@ -10,6 +10,9 @@ const server = await serve(0);
 const base = `http://localhost:${server.address().port}/`;
 const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
 const fake = await readFile(new URL('./fake-supabase.js', import.meta.url), 'utf8');
+const fakeGoogle = await readFile(new URL('./fake-google.js', import.meta.url), 'utf8');
+// A 1x1 PNG standing in for a photo downloaded from Drive.
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64');
 const errors = [];
 let failed = false;
 
@@ -39,8 +42,13 @@ await context.route(/fonts\.(googleapis|gstatic)\.com|cdnjs\.cloudflare\.com/, r
 await context.route(/cdn\.jsdelivr\.net\/npm\/@supabase\/supabase-js/, r => r.fulfill({ contentType: 'text/javascript', body: fake }));
 await context.route(/\/js\/config\.js$/, r => r.fulfill({
   contentType: 'text/javascript',
-  body: "window.CPM_CONFIG = { supabaseUrl: 'https://test.supabase.co', supabaseAnonKey: 'test-key' };",
+  body: "window.CPM_CONFIG = { supabaseUrl: 'https://test.supabase.co', supabaseAnonKey: 'test-key', googleClientId: 'cid', googleApiKey: 'key', googleAppId: '123' };",
 }));
+await context.route(/accounts\.google\.com\/gsi\/client|apis\.google\.com\/js\/api\.js/, r => r.fulfill({ contentType: 'text/javascript', body: fakeGoogle }));
+const driveHeaders = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization' };
+await context.route(/www\.googleapis\.com\/drive\/v3\/files\//, r => r.request().method() === 'OPTIONS'
+  ? r.fulfill({ status: 204, headers: driveHeaders })
+  : r.fulfill({ status: 200, headers: { ...driveHeaders, 'content-type': 'image/png' }, body: PNG }));
 
 async function openApp() {
   const page = await context.newPage();
@@ -144,6 +152,61 @@ await step('timeline report and backup still work in a workspace', async () => {
   await a.click('#open-report');
   await a.waitForSelector('#report-preview svg');
   await a.click('[data-action=close]');
+});
+
+const previewCount = page => page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('fake.supabase.storage') || '{}')).length);
+const picks = page => page.evaluate(() => {
+  window.FAKE_DRIVE_PICKS = [
+    { id: 'img1', name: 'Site photo.png', mimeType: 'image/png', url: 'https://drive.google.com/file/d/img1/view', sizeBytes: 70 },
+    { id: 'pdf1', name: 'Contract.pdf', mimeType: 'application/pdf', url: 'https://drive.google.com/file/d/pdf1/view', sizeBytes: 5000 },
+  ];
+});
+
+await step('attaches Drive photos as previews and other files as links', async () => {
+  await picks(a);
+  await a.click('#tab-projects');
+  await a.click('[data-edit-project="oldp"]');
+  await a.click('[data-action=add-drive]:not([disabled])');
+  await a.waitForSelector('.link-row.drive-row img[src^="blob:"]');
+  assert.equal(await a.locator('.link-row.drive-row').count(), 2);
+  assert.match(await a.textContent('.link-row.drive-row:nth-child(2) .row-thumb'), /PDF/);
+  await a.click('#project-form [type=submit]');
+  // The uploader's page shows the copy it already has; teammates load it from storage (next step).
+  await a.waitForSelector('.card .thumbs img[src^="blob:"]');
+  assert.equal(await previewCount(a), 1);
+  const path = await a.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('fake.supabase.storage')))[0]);
+  assert.match(path, /^[0-9a-f-]{36}\/[0-9a-f-]{36}\.jpg$/);
+});
+
+await step('teammates see the preview on their own screen', async () => {
+  await b.click('#tab-projects');
+  await b.waitForSelector('.card .thumbs img[src^="data:image/jpeg"]');
+});
+
+await step('removing a photo from a project deletes its preview', async () => {
+  await a.click('#tab-projects');
+  await a.click('[data-edit-project="oldp"]');
+  await a.waitForSelector('.link-row.drive-row img[src]');
+  await a.click('.link-row.drive-row:has(img) [data-action=remove-link]');
+  await a.click('#project-form [type=submit]');
+  await a.waitForFunction(() => !document.querySelector('.card .thumbs'));
+  assert.equal(await previewCount(a), 0);
+  assert.ok(await a.isVisible('.card .link-count'), 'the PDF link is kept');
+});
+
+await step('deleting a project deletes its previews', async () => {
+  await a.click('[data-edit-project="oldp"]');
+  await picks(a);
+  await a.click('[data-action=add-drive]');
+  await a.waitForSelector('.link-row.drive-row img[src^="blob:"]');
+  await a.click('#project-form [type=submit]');
+  await a.waitForSelector('.card .thumbs img');
+  assert.equal(await previewCount(a), 1);
+  await a.click('[data-edit-project="oldp"]');
+  await a.click('[data-action=ask-delete-project]');
+  await a.click('[data-action=delete-project]');
+  await waitCount(a, 'projects', 0);
+  assert.equal(await previewCount(a), 0);
 });
 
 await step('signing out returns to the sign-in screen', async () => {
