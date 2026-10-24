@@ -105,7 +105,7 @@ GitHub Actions runs all three on every push and pull request.
 
 Planned for the full version:
 
-- **Google Drive integration:** pick files from Drive and show image previews instead of plain links.
+- **Project photos from Google Drive:** an "Add from Drive" button using the Google Picker, so photos attached to a project show as small previews for everyone in the workspace. This was built and then set aside to keep the app simple: it's in commit `6b8182d` and was removed in #6, so restoring it starts from there. It also needs the Drive and Picker APIs enabled in Google Cloud and a private Supabase storage bucket for the previews.
 - **React + TypeScript rebuild:** split the app into components with unit tests as it grows.
 - **More project detail:** budgets, invoices and time tracking, a notes and activity log per client, and deadline reminders.
 - **AI assistance:** summarise a client's history, draft follow-up emails, and flag projects that are at risk.
