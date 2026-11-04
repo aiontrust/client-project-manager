@@ -1305,6 +1305,10 @@
 
   $('account').addEventListener('click', teamSheet);
 
+  // Copyright runs from the year the app started to the current year.
+  const thisYear = new Date().getFullYear();
+  if (thisYear > 2026) $('copyright-years').textContent = `2026\u2013${thisYear}`;
+
   // ---------- boot ----------
   const savedView = store.get('cpm.view');
   if (['clients', 'projects', 'calendar'].includes(savedView)) state.view = savedView;

@@ -245,6 +245,12 @@ await step('shows one empty-state message on a phone', async () => {
   await fresh.close();
 });
 
+await step('shows the copyright at the bottom of the page', async () => {
+  const text = await page.textContent('#copyright');
+  assert.match(text, /^© 2026(–\d{4})? aiontrust\. All rights reserved\.$/);
+  assert.ok(await page.isVisible('#copyright'));
+});
+
 await step('raises no page errors', async () => {
   assert.deepEqual(errors, []);
 });
