@@ -59,6 +59,7 @@ await step('asks signed-out visitors to sign in with Google', async () => {
   await a.waitForSelector('#gate [data-action=sign-in]');
   assert.equal(await a.isVisible('#main-tabs'), false);
   assert.equal(await a.isVisible('#view-clients'), false);
+  assert.ok(await a.isVisible('#copyright'), 'copyright shows on the sign-in screen too');
 });
 
 await step('signing in leads to creating a workspace', async () => {

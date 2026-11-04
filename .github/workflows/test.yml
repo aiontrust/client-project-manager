@@ -7,7 +7,9 @@ on:
 
 jobs:
   app:
-    runs-on: ubuntu-latest
+    # Playwright 1.56 can't install its browser on Ubuntu 26.04, which ubuntu-latest
+    # now points to. Stay on 24.04 until Playwright is upgraded.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
